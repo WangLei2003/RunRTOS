@@ -26,6 +26,7 @@ RUN_STRUCT RunDevice
 
 RUN_STATIC RunDevice *RunDeviceFirst;
 
+/* Allocates a generic device and its private backend context. */
 RunStatus run_device_create(RUN_CONST RunDeviceConfig *runConfig, RunDevice **runDeviceOut)
 {
     RunDevice *runDevice;
@@ -78,6 +79,7 @@ RunStatus run_device_create(RUN_CONST RunDeviceConfig *runConfig, RunDevice **ru
     return runStatus;
 }
 
+/* Unlinks and releases a device together with its backend context. */
 RunStatus run_device_delete(RunDevice *runDevice)
 {
     RunDevice *runCurrent = RunDeviceFirst;
@@ -117,21 +119,25 @@ RunStatus run_device_delete(RunDevice *runDevice)
     return RUN_STATUS_NOT_FOUND;
 }
 
+/* Returns the read-only device name, or NULL for an invalid handle. */
 RUN_CONST RUN_CHAR *run_device_name(RunDevice *runDevice)
 {
     return (runDevice != RUN_NULL) ? runDevice->runName : RUN_NULL;
 }
 
+/* Returns the device capability class, defaulting safely for a null handle. */
 RunDeviceClass run_device_class(RunDevice *runDevice)
 {
     return (runDevice != RUN_NULL) ? runDevice->runClass : RUN_DEVICE_CLASS_GPIO;
 }
 
+/* Exposes the immutable backend operation table for capability dispatch. */
 RUN_CONST RUN_VOID *run_device_operations(RunDevice *runDevice)
 {
     return (runDevice != RUN_NULL) ? runDevice->runOperations : RUN_NULL;
 }
 
+/* Returns the backend-owned context without exposing its concrete type. */
 RUN_VOID *run_device_context(RunDevice *runDevice)
 {
     return (runDevice != RUN_NULL) ? runDevice->runContext : RUN_NULL;

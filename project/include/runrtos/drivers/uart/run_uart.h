@@ -42,6 +42,7 @@ typedef RUN_STRUCT RunUartOperations
     RunStatus (*runFlush)(RunDevice *runDevice, RunTimeMs runTimeout);
 } RunUartOperations;
 
+/* Returns the UART capability table attached to a generic device. */
 RUN_STATIC RUN_INLINE RUN_CONST RunUartOperations *run_uart_ops(RunDevice *runDevice)
 {
     return (RUN_CONST RunUartOperations *)run_device_operations(runDevice);

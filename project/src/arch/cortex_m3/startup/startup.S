@@ -12,6 +12,7 @@
     .text
     .global Reset_Handler
     .type Reset_Handler, %function
+    @ Initializes C memory sections and transfers control to the application.
 Reset_Handler:
     @ Copy initialized data from its Flash load address into SRAM.
     ldr r0, =_sidata

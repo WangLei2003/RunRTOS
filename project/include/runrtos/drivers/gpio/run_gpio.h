@@ -53,6 +53,7 @@ typedef RUN_STRUCT RunGpioOperations
                                     RUN_VOID *runArgument);
 } RunGpioOperations;
 
+/* Returns the GPIO capability table attached to a generic device. */
 RUN_STATIC RUN_INLINE RUN_CONST RunGpioOperations *run_gpio_ops(RunDevice *runDevice)
 {
     return (RUN_CONST RunGpioOperations *)run_device_operations(runDevice);
@@ -69,6 +70,17 @@ RunStatus run_gpio_configure(RunDevice *runDevice,
 RunStatus run_gpio_write(RunDevice *runDevice, RUN_UINT_16 runPin, RUN_BOOL runHigh);
 RunStatus run_gpio_toggle(RunDevice *runDevice, RUN_UINT_16 runPin);
 RunStatus run_gpio_read(RunDevice *runDevice, RUN_UINT_16 runPin, RUN_BOOL *runHighOut);
+/*
+ * Installs an EXTI callback for one port pin. At most one port may own an EXTI
+ * line; reassigning the same port/pin replaces its callback. The callback runs
+ * in interrupt context and must not block. A null callback is invalid.
+ */
+RunStatus run_gpio_attach_interrupt(RunDevice *runDevice,
+                                    RUN_UINT_16 runPin,
+                                    RUN_BOOL runRising,
+                                    RUN_BOOL runFalling,
+                                    RunGpioIrqCallback runCallback,
+                                    RUN_VOID *runArgument);
 RunStatus run_gpio_create_f103(RUN_UINT_32 runPortIndex,
                                RUN_CONST RUN_CHAR *runName,
                                RunDevice **runDeviceOut);

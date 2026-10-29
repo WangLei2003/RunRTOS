@@ -9,6 +9,7 @@
  */
 #include "runrtos/drivers/spi/run_spi.h"
 
+/* Forwards a validated blocking full-duplex transfer to the SPI backend. */
 RunStatus run_spi_transfer(RunDevice *runDevice,
                            RUN_CONST RUN_UINT_8 *runTransmit,
                            RUN_UINT_8 *runReceive,
@@ -26,6 +27,7 @@ RunStatus run_spi_transfer(RunDevice *runDevice,
                                       runLength, runTimeoutMs);
 }
 
+/* Forwards one asynchronous full-duplex transfer and its completion callback. */
 RunStatus run_spi_transfer_async(RunDevice *runDevice,
                                  RUN_CONST RUN_UINT_8 *runTransmit,
                                  RUN_UINT_8 *runReceive,

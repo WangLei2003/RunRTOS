@@ -10,6 +10,7 @@
  */
 #include "runrtos/drivers/uart/run_uart.h"
 
+/* Configures UART framing and baud rate through the selected backend. */
 RunStatus run_uart_configure(RunDevice *runDevice,
                              RUN_UINT_32 runBaudRate,
                              RUN_UINT_8 runDataBits,
@@ -25,6 +26,7 @@ RunStatus run_uart_configure(RunDevice *runDevice,
                                        runParity, runStopBits);
 }
 
+/* Transmits a caller-owned buffer and waits for backend completion or timeout. */
 RunStatus run_uart_write(RunDevice *runDevice,
                          RUN_CONST RUN_UINT_8 *runData,
                          RUN_SIZE runLength,
@@ -39,6 +41,7 @@ RunStatus run_uart_write(RunDevice *runDevice,
     return runOperations->runWrite(runDevice, runData, runLength, runTimeout);
 }
 
+/* Starts nonblocking transmission while the caller retains buffer ownership. */
 RunStatus run_uart_write_async(RunDevice *runDevice,
                                RUN_CONST RUN_UINT_8 *runData,
                                RUN_SIZE runLength,
@@ -54,6 +57,7 @@ RunStatus run_uart_write_async(RunDevice *runDevice,
                                         runCompletion, runArgument);
 }
 
+/* Receives available bytes, preserving partial-read semantics on timeout. */
 RunStatus run_uart_read(RunDevice *runDevice,
                         RUN_UINT_8 *runData,
                         RUN_SIZE runLength,
@@ -70,6 +74,7 @@ RunStatus run_uart_read(RunDevice *runDevice,
                                   runTimeout);
 }
 
+/* Waits until the UART transmitter has fully drained. */
 RunStatus run_uart_flush(RunDevice *runDevice, RunTimeMs runTimeout)
 {
     RUN_CONST RunUartOperations *runOperations = run_uart_ops(runDevice);

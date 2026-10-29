@@ -9,6 +9,7 @@
  */
 #include "runrtos/drivers/i2c/run_i2c.h"
 
+/* Forwards one validated blocking I2C transaction to the backend. */
 RunStatus run_i2c_transaction(RunDevice *runDevice,
                               RUN_UINT_16 runAddress,
                               RUN_CONST RUN_UINT_8 *runWriteData,
@@ -29,6 +30,7 @@ RunStatus run_i2c_transaction(RunDevice *runDevice,
                                          runReadLength, runTimeoutMs);
 }
 
+/* Forwards one validated asynchronous I2C transaction and completion callback. */
 RunStatus run_i2c_transaction_async(RunDevice *runDevice,
                                     RUN_UINT_16 runAddress,
                                     RUN_CONST RUN_UINT_8 *runWriteData,

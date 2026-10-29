@@ -7,6 +7,7 @@
  * Dependencies: public GPIO interface, generic device allocation, arch cycle timer.
  * Constraint: Register bases and pin encodings are private to this file.
  */
+#include "runrtos/arch/run_arch.h"
 #include "runrtos/drivers/gpio/run_gpio.h"
 
 #define RUN_STM32F1_GPIO_PIN_COUNT 16U
@@ -19,6 +20,12 @@
 #define RUN_STM32F1_GPIO_ALTERNATE_PUSH_PULL_2MHZ 0xAU
 #define RUN_STM32F1_GPIO_ALTERNATE_OPEN_DRAIN_2MHZ 0xEU
 #define RUN_STM32F1_GPIO_ANALOG 0x0U
+#define RUN_STM32F1_AFIO_EXTICR1 0x40010008U
+#define RUN_STM32F1_EXTI_IMR 0x40010400U
+#define RUN_STM32F1_EXTI_RTSR 0x40010408U
+#define RUN_STM32F1_EXTI_FTSR 0x4001040CU
+#define RUN_STM32F1_EXTI_PR 0x40010414U
+#define RUN_STM32F1_EXTI_IRQ_PRIORITY 0x80U
 
 typedef RUN_STRUCT RunStm32f1Gpio
 {
@@ -26,8 +33,9 @@ typedef RUN_STRUCT RunStm32f1Gpio
     RUN_VOLATILE RUN_UINT_32 *runControlHigh;
     RUN_VOLATILE RUN_UINT_32 *runInput;
     RUN_VOLATILE RUN_UINT_32 *runOutput;
-    RUN_VOLATILE RUN_UINT_32 runBitSetReset;
-    RUN_VOLATILE RUN_UINT_32 runReset;
+    RUN_VOLATILE RUN_UINT_32 *runBitSetReset;
+    RUN_VOLATILE RUN_UINT_32 *runReset;
+    RUN_UINT_32 runPortIndex;
 } RunStm32f1Gpio;
 
 typedef RUN_STRUCT RunStm32f1GpioRegisters
@@ -41,6 +49,117 @@ typedef RUN_STRUCT RunStm32f1GpioRegisters
     RUN_VOLATILE RUN_UINT_32 runLock;
 } RunStm32f1GpioRegisters;
 
+typedef RUN_STRUCT RunStm32f1ExtiEntry
+{
+    RunDevice *runDevice;
+    RunGpioIrqCallback runCallback;
+    RUN_VOID *runArgument;
+} RunStm32f1ExtiEntry;
+
+RUN_STATIC RunStm32f1ExtiEntry RunStm32f1ExtiEntries[RUN_STM32F1_GPIO_PIN_COUNT];
+
+/* Acknowledges pending EXTI lines and invokes their registered callbacks. */
+RUN_STATIC RUN_VOID run_stm32f1_exti_dispatch(RUN_UINT_32 runFirstPin,
+                                              RUN_UINT_32 runLastPin)
+{
+    RUN_VOLATILE RUN_UINT_32 *runPending =
+        (RUN_VOLATILE RUN_UINT_32 *)(RUN_VOID *)RUN_STM32F1_EXTI_PR;
+    for (RUN_UINT_32 runPin = runFirstPin; runPin <= runLastPin; runPin++)
+    {
+        RUN_UINT_32 runMask = 1UL << runPin;
+        if ((*runPending & runMask) != 0U)
+        {
+            *runPending = runMask;
+            if (RunStm32f1ExtiEntries[runPin].runCallback != RUN_NULL)
+            {
+                RunStm32f1ExtiEntries[runPin].runCallback(
+                    RunStm32f1ExtiEntries[runPin].runDevice,
+                    (RUN_UINT_16)runPin,
+                    RunStm32f1ExtiEntries[runPin].runArgument);
+            }
+        }
+    }
+}
+
+/* Dispatches the dedicated EXTI line zero interrupt. */
+RUN_VOID EXTI0_IRQHandler(RUN_VOID)
+{
+    run_stm32f1_exti_dispatch(0U, 0U);
+}
+
+/* Dispatches the dedicated EXTI line one interrupt. */
+RUN_VOID EXTI1_IRQHandler(RUN_VOID)
+{
+    run_stm32f1_exti_dispatch(1U, 1U);
+}
+
+/* Dispatches the dedicated EXTI line two interrupt. */
+RUN_VOID EXTI2_IRQHandler(RUN_VOID)
+{
+    run_stm32f1_exti_dispatch(2U, 2U);
+}
+
+/* Dispatches the dedicated EXTI line three interrupt. */
+RUN_VOID EXTI3_IRQHandler(RUN_VOID)
+{
+    run_stm32f1_exti_dispatch(3U, 3U);
+}
+
+/* Dispatches the dedicated EXTI line four interrupt. */
+RUN_VOID EXTI4_IRQHandler(RUN_VOID)
+{
+    run_stm32f1_exti_dispatch(4U, 4U);
+}
+
+/* Dispatches the shared EXTI lines five through nine. */
+RUN_VOID EXTI9_5_IRQHandler(RUN_VOID)
+{
+    run_stm32f1_exti_dispatch(5U, 9U);
+}
+
+/* Dispatches the shared EXTI lines ten through fifteen. */
+RUN_VOID EXTI15_10_IRQHandler(RUN_VOID)
+{
+    run_stm32f1_exti_dispatch(10U, 15U);
+}
+
+/* Maps an EXTI line to its F103 NVIC interrupt and enables that IRQ. */
+RUN_STATIC RUN_VOID run_stm32f1_gpio_enable_exti_irq(RUN_UINT_32 runPin)
+{
+    RUN_UINT_32 runIrq;
+    if (runPin == 0U)
+    {
+        runIrq = 6U;
+    }
+    else if (runPin == 1U)
+    {
+        runIrq = 7U;
+    }
+    else if (runPin == 2U)
+    {
+        runIrq = 8U;
+    }
+    else if (runPin == 3U)
+    {
+        runIrq = 9U;
+    }
+    else if (runPin == 4U)
+    {
+        runIrq = 10U;
+    }
+    else if (runPin <= 9U)
+    {
+        runIrq = 23U;
+    }
+    else
+    {
+        runIrq = 40U;
+    }
+    run_arch_set_irq_priority(runIrq, RUN_STM32F1_EXTI_IRQ_PRIORITY);
+    run_arch_enable_irq(runIrq);
+}
+
+/* Programs one pin's direction, output type, and F1 pull selection. */
 RUN_STATIC RunStatus run_stm32f1_gpio_configure(RunDevice *runDevice,
                                                 RUN_UINT_16 runPin,
                                                 RUN_UINT_8 runMode,
@@ -78,11 +197,11 @@ RUN_STATIC RunStatus run_stm32f1_gpio_configure(RunDevice *runDevice,
         if ((RunGpioPull)runPull == RUN_GPIO_PULL_DOWN)
         {
             RUN_UINT_32 runPinMask = 1UL << runPin;
-            runGpio->runBitSetReset = runPinMask << 16U;
+            *runGpio->runBitSetReset = runPinMask << 16U;
         }
         else if ((RunGpioPull)runPull == RUN_GPIO_PULL_UP)
         {
-            runGpio->runBitSetReset = 1UL << runPin;
+            *runGpio->runBitSetReset = 1UL << runPin;
         }
         break;
     case RUN_GPIO_MODE_OUTPUT_PUSH_PULL:
@@ -109,6 +228,7 @@ RUN_STATIC RunStatus run_stm32f1_gpio_configure(RunDevice *runDevice,
     return RUN_STATUS_OK;
 }
 
+/* Drives one output pin atomically through the BSRR and BRR registers. */
 RUN_STATIC RunStatus run_stm32f1_gpio_write(RunDevice *runDevice,
                                             RUN_UINT_16 runPin,
                                             RUN_BOOL runHigh)
@@ -121,15 +241,16 @@ RUN_STATIC RunStatus run_stm32f1_gpio_write(RunDevice *runDevice,
     /* BSRR/BRR avoid a read-modify-write of ODR and naturally ignore short pulses. */
     if (runHigh)
     {
-        runGpio->runBitSetReset = 1UL << runPin;
+        *runGpio->runBitSetReset = 1UL << runPin;
     }
     else
     {
-        runGpio->runReset = 1UL << runPin;
+        *runGpio->runReset = 1UL << runPin;
     }
     return RUN_STATUS_OK;
 }
 
+/* Flips one output pin after reading its current output latch. */
 RUN_STATIC RunStatus run_stm32f1_gpio_toggle(RunDevice *runDevice, RUN_UINT_16 runPin)
 {
     RunStm32f1Gpio *runGpio = (RunStm32f1Gpio *)run_device_context(runDevice);
@@ -142,15 +263,16 @@ RUN_STATIC RunStatus run_stm32f1_gpio_toggle(RunDevice *runDevice, RUN_UINT_16 r
     runCurrent = *runGpio->runOutput;
     if ((runCurrent & (1UL << runPin)) != 0U)
     {
-        runGpio->runReset = 1UL << runPin;
+        *runGpio->runReset = 1UL << runPin;
     }
     else
     {
-        runGpio->runBitSetReset = 1UL << runPin;
+        *runGpio->runBitSetReset = 1UL << runPin;
     }
     return RUN_STATUS_OK;
 }
 
+/* Samples one pin from the GPIO input-data register. */
 RUN_STATIC RunStatus run_stm32f1_gpio_read(RunDevice *runDevice,
                                            RUN_UINT_16 runPin,
                                            RUN_BOOL *runHighOut)
@@ -166,14 +288,83 @@ RUN_STATIC RunStatus run_stm32f1_gpio_read(RunDevice *runDevice,
     return RUN_STATUS_OK;
 }
 
+/* Binds one EXTI line to a device callback and configures its active edges. */
+RUN_STATIC RunStatus run_stm32f1_gpio_attach_interrupt(
+    RunDevice *runDevice,
+    RUN_UINT_16 runPin,
+    RUN_BOOL runRising,
+    RUN_BOOL runFalling,
+    RunGpioIrqCallback runCallback,
+    RUN_VOID *runArgument)
+{
+    RunStm32f1Gpio *runGpio = (RunStm32f1Gpio *)run_device_context(runDevice);
+    RUN_VOLATILE RUN_UINT_32 *runExtiMask;
+    RUN_VOLATILE RUN_UINT_32 *runExtiEdge;
+    RUN_VOLATILE RUN_UINT_32 *runExtiPending;
+    RUN_VOLATILE RUN_UINT_32 *runExtiConfiguration;
+    RUN_UINT_32 runShift;
+    RUN_UINT_32 runMask;
+
+    if ((runGpio == RUN_NULL) || (runPin >= RUN_STM32F1_GPIO_PIN_COUNT) ||
+        (runCallback == RUN_NULL) || (!runRising && !runFalling))
+    {
+        return RUN_STATUS_INVALID_ARGUMENT;
+    }
+    if (run_kernel_is_in_isr())
+    {
+        return RUN_STATUS_CONTEXT;
+    }
+    if ((RunStm32f1ExtiEntries[runPin].runDevice != RUN_NULL) &&
+        (RunStm32f1ExtiEntries[runPin].runDevice != runDevice))
+    {
+        return RUN_STATUS_BUSY;
+    }
+
+    runMask = 1UL << runPin;
+    runShift = (runPin & 3U) * RUN_STM32F1_GPIO_CONFIG_BITS;
+    runExtiConfiguration =
+        (RUN_VOLATILE RUN_UINT_32 *)(RUN_VOID *)(RUN_STM32F1_AFIO_EXTICR1 +
+                                                  ((runPin >> 2U) * 4U));
+    /* AFIO maps exactly one GPIO port to each EXTI line. */
+    *runExtiConfiguration =
+        (*runExtiConfiguration & ~(0xFUL << runShift)) |
+        (runGpio->runPortIndex << runShift);
+    runExtiMask = (RUN_VOLATILE RUN_UINT_32 *)(RUN_VOID *)RUN_STM32F1_EXTI_IMR;
+    runExtiEdge = (RUN_VOLATILE RUN_UINT_32 *)(RUN_VOID *)
+        (runRising ? RUN_STM32F1_EXTI_RTSR : RUN_STM32F1_EXTI_FTSR);
+    runExtiPending = (RUN_VOLATILE RUN_UINT_32 *)(RUN_VOID *)RUN_STM32F1_EXTI_PR;
+    *runExtiPending = runMask;
+    *runExtiEdge |= runMask;
+    if (runRising != runFalling)
+    {
+        RUN_VOLATILE RUN_UINT_32 *runDisableEdge =
+            (RUN_VOLATILE RUN_UINT_32 *)(RUN_VOID *)
+            (runRising ? RUN_STM32F1_EXTI_FTSR : RUN_STM32F1_EXTI_RTSR);
+        *runDisableEdge &= ~runMask;
+    }
+    else
+    {
+        /* Both-edge callbacks require both trigger registers. */
+        *((RUN_VOLATILE RUN_UINT_32 *)(RUN_VOID *)RUN_STM32F1_EXTI_RTSR) |= runMask;
+        *((RUN_VOLATILE RUN_UINT_32 *)(RUN_VOID *)RUN_STM32F1_EXTI_FTSR) |= runMask;
+    }
+    RunStm32f1ExtiEntries[runPin].runDevice = runDevice;
+    RunStm32f1ExtiEntries[runPin].runCallback = runCallback;
+    RunStm32f1ExtiEntries[runPin].runArgument = runArgument;
+    *runExtiMask |= runMask;
+    run_stm32f1_gpio_enable_exti_irq(runPin);
+    return RUN_STATUS_OK;
+}
+
 RUN_STATIC RUN_CONST RunGpioOperations RunStm32f1GpioOperations = {
     run_stm32f1_gpio_configure,
     run_stm32f1_gpio_write,
     run_stm32f1_gpio_toggle,
     run_stm32f1_gpio_read,
-    RUN_NULL
+    run_stm32f1_gpio_attach_interrupt
 };
 
+/* Creates a GPIO device bound to one STM32F103 port register block. */
 RunStatus run_gpio_create_f103(RUN_UINT_32 runPortIndex,
                                RUN_CONST RUN_CHAR *runName,
                                RunDevice **runDeviceOut)
@@ -207,8 +398,9 @@ RunStatus run_gpio_create_f103(RUN_UINT_32 runPortIndex,
     runGpio->runControlHigh = &runRegisters->runControlHigh;
     runGpio->runInput = &runRegisters->runInput;
     runGpio->runOutput = &runRegisters->runOutput;
-    runGpio->runBitSetReset = runRegisters->runBitSetReset;
-    runGpio->runReset = runRegisters->runReset;
+    runGpio->runBitSetReset = &runRegisters->runBitSetReset;
+    runGpio->runReset = &runRegisters->runReset;
+    runGpio->runPortIndex = runPortIndex;
     return RUN_STATUS_OK;
 }
 

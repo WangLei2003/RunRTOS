@@ -32,6 +32,7 @@ typedef RUN_STRUCT RunSpiOperations
                                   RUN_VOID *runArgument);
 } RunSpiOperations;
 
+/* Returns the SPI capability table attached to a generic device. */
 RUN_STATIC RUN_INLINE RUN_CONST RunSpiOperations *run_spi_ops(RunDevice *runDevice)
 {
     return (RUN_CONST RunSpiOperations *)run_device_operations(runDevice);

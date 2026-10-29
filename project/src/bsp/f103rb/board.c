@@ -32,6 +32,7 @@
 #define RUN_F103_RCC_APB2_CLOCK_GPIOA (1UL << 2U)
 #define RUN_F103_RCC_APB2_CLOCK_GPIOB (1UL << 3U)
 #define RUN_F103_RCC_APB2_CLOCK_GPIOC (1UL << 4U)
+#define RUN_F103_RCC_APB2_CLOCK_GPIOD (1UL << 5U)
 #define RUN_F103_RCC_APB2_CLOCK_USART1 (1UL << 14U)
 #define RUN_F103_RCC_APB1_CLOCK_SPI2 (1UL << 14U)
 #define RUN_F103_RCC_APB1_CLOCK_I2C1 (1UL << 21U)
@@ -64,7 +65,9 @@ RUN_STATIC RUN_ATTR_ALIGNED(8) RUN_UINT_8 RunBoardMemoryArena[
     RUN_CONFIG_MEMORY_ARENA_BYTES
 ] RUN_ATTR_SECTION(".run_memory");
 RUN_STATIC RunMemory *RunBoardMemory;
+RUN_STATIC RUN_VOLATILE RUN_UINT_32 RunBoardKeyPresses;
 
+/* Polls a clock-ready flag until it asserts or the bounded wait expires. */
 RUN_STATIC RUN_BOOL run_f103_wait_flag(RUN_VOLATILE RUN_UINT_32 *runRegister,
                                        RUN_UINT_32 runMask)
 {
@@ -78,6 +81,7 @@ RUN_STATIC RUN_BOOL run_f103_wait_flag(RUN_VOLATILE RUN_UINT_32 *runRegister,
     return RUN_FALSE;
 }
 
+/* Configures the F103 PLL to source 72 MHz from the board's 8 MHz crystal. */
 RUN_STATIC RunStatus run_f103_clock_init(RUN_VOID)
 {
     /* 72 MHz exceeds the Flash zero-wait limit, so use two wait states. */
@@ -112,9 +116,22 @@ RUN_STATIC RunStatus run_f103_clock_init(RUN_VOID)
     return RUN_STATUS_OK;
 }
 
+/* Counts board key edges from the GPIO interrupt context. */
+RUN_STATIC RUN_VOID run_f103_key_interrupt(RunDevice *runDevice,
+                                           RUN_UINT_16 runPin,
+                                           RUN_VOID *runArgument)
+{
+    (RUN_VOID)runDevice;
+    (RUN_VOID)runPin;
+    (RUN_VOID)runArgument;
+    RunBoardKeyPresses++;
+}
+
+/* Maps the board's LED, console, buses, Flash, and key pins to device modes. */
 RUN_STATIC RunStatus run_f103_configure_pins(RunDevice *runGpioA,
                                              RunDevice *runGpioB,
-                                             RunDevice *runGpioC)
+                                             RunDevice *runGpioC,
+                                             RunDevice *runGpioD)
 {
     RunStatus runStatus;
     /* PC0 drives the active-low user LED. */
@@ -170,14 +187,61 @@ RUN_STATIC RunStatus run_f103_configure_pins(RunDevice *runGpioA,
                                        RUN_GPIO_MODE_ALTERNATE_PUSH_PULL,
                                        RUN_GPIO_PULL_NONE);
     }
+    /* WK_UP is active high; KEY0/KEY1/KEY2 are active low. */
+    if (runStatus == RUN_STATUS_OK)
+    {
+        runStatus = run_gpio_configure(runGpioA, 0U, RUN_GPIO_MODE_INPUT,
+                                       RUN_GPIO_PULL_DOWN);
+    }
+    if (runStatus == RUN_STATUS_OK)
+    {
+        runStatus = run_gpio_configure(runGpioC, 8U, RUN_GPIO_MODE_INPUT,
+                                       RUN_GPIO_PULL_UP);
+    }
+    if (runStatus == RUN_STATUS_OK)
+    {
+        runStatus = run_gpio_configure(runGpioC, 9U, RUN_GPIO_MODE_INPUT,
+                                       RUN_GPIO_PULL_UP);
+    }
+    if (runStatus == RUN_STATUS_OK)
+    {
+        runStatus = run_gpio_configure(runGpioD, 2U, RUN_GPIO_MODE_INPUT,
+                                       RUN_GPIO_PULL_UP);
+    }
+    if (runStatus == RUN_STATUS_OK)
+    {
+        runStatus = run_gpio_attach_interrupt(
+            runGpioA, 0U, RUN_TRUE, RUN_FALSE,
+            run_f103_key_interrupt, RUN_NULL);
+    }
+    if (runStatus == RUN_STATUS_OK)
+    {
+        runStatus = run_gpio_attach_interrupt(
+            runGpioC, 8U, RUN_FALSE, RUN_TRUE,
+            run_f103_key_interrupt, RUN_NULL);
+    }
+    if (runStatus == RUN_STATUS_OK)
+    {
+        runStatus = run_gpio_attach_interrupt(
+            runGpioC, 9U, RUN_FALSE, RUN_TRUE,
+            run_f103_key_interrupt, RUN_NULL);
+    }
+    if (runStatus == RUN_STATUS_OK)
+    {
+        runStatus = run_gpio_attach_interrupt(
+            runGpioD, 2U, RUN_FALSE, RUN_TRUE,
+            run_f103_key_interrupt, RUN_NULL);
+    }
     return runStatus;
 }
 
+/* Creates core devices and initializes kernel services for the application. */
 RunStatus run_board_init(RunBoardDevices *runDevicesOut)
 {
     RunDevice *runGpioA = RUN_NULL;
     RunDevice *runGpioB = RUN_NULL;
     RunDevice *runGpioC = RUN_NULL;
+    RunDevice *runGpioD = RUN_NULL;
     RunStatus runStatus;
 
     if (runDevicesOut == RUN_NULL)
@@ -194,6 +258,7 @@ RunStatus run_board_init(RunBoardDevices *runDevicesOut)
     RunF103RccInstance->runApb2Enable |=
         RUN_F103_RCC_APB2_CLOCK_AFIO | RUN_F103_RCC_APB2_CLOCK_GPIOA |
         RUN_F103_RCC_APB2_CLOCK_GPIOB | RUN_F103_RCC_APB2_CLOCK_GPIOC |
+        RUN_F103_RCC_APB2_CLOCK_GPIOD |
         RUN_F103_RCC_APB2_CLOCK_USART1;
     RunF103RccInstance->runApb1Enable |=
         RUN_F103_RCC_APB1_CLOCK_SPI2 | RUN_F103_RCC_APB1_CLOCK_I2C1;
@@ -219,7 +284,12 @@ RunStatus run_board_init(RunBoardDevices *runDevicesOut)
     }
     if (runStatus == RUN_STATUS_OK)
     {
-        runStatus = run_f103_configure_pins(runGpioA, runGpioB, runGpioC);
+        runStatus = run_gpio_create_f103(3U, "gpio-d", &runGpioD);
+    }
+    if (runStatus == RUN_STATUS_OK)
+    {
+        runStatus = run_f103_configure_pins(runGpioA, runGpioB, runGpioC,
+                                            runGpioD);
     }
     if (runStatus == RUN_STATUS_OK)
     {
@@ -239,11 +309,17 @@ RunStatus run_board_init(RunBoardDevices *runDevicesOut)
     }
     if (runStatus == RUN_STATUS_OK)
     {
+        runDevicesOut->runMemory = RunBoardMemory;
         runDevicesOut->runLedPort = runGpioC;
+        runDevicesOut->runGpioA = runGpioA;
+        runDevicesOut->runGpioB = runGpioB;
+        runDevicesOut->runGpioC = runGpioC;
+        runDevicesOut->runGpioD = runGpioD;
     }
     return runStatus;
 }
 
+/* Programs SysTick for the configured scheduler frequency and starts tick IRQs. */
 RunStatus run_board_start_tick(RUN_VOID)
 {
     /* SysTick uses the 72 MHz core clock and counts down from reload to zero. */
@@ -260,5 +336,11 @@ RunStatus run_board_start_tick(RUN_VOID)
                             RUN_F103_SYSTICK_TICKINT |
                             RUN_F103_SYSTICK_ENABLE;
     return RUN_STATUS_OK;
+}
+
+/* Returns the accumulated key-edge count for diagnostics. */
+RUN_UINT_32 run_board_get_key_press_count(RUN_VOID)
+{
+    return RunBoardKeyPresses;
 }
 

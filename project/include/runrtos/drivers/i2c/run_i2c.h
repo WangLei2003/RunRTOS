@@ -36,6 +36,7 @@ typedef RUN_STRUCT RunI2cOperations
                                      RUN_VOID *runArgument);
 } RunI2cOperations;
 
+/* Returns the I2C capability table attached to a generic device. */
 RUN_STATIC RUN_INLINE RUN_CONST RunI2cOperations *run_i2c_ops(RunDevice *runDevice)
 {
     return (RUN_CONST RunI2cOperations *)run_device_operations(runDevice);

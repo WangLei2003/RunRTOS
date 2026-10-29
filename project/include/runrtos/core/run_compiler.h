@@ -74,5 +74,15 @@ RUN_FORCE_INLINE RUN_UINT_32 run_compiler_count_leading_zeros(RUN_UINT_32 runVal
     return (RUN_UINT_32)__builtin_clz(runValue);
 }
 
+/* Counts set bits locally so freestanding links do not require __popcountsi2. */
+RUN_FORCE_INLINE RUN_UINT_32 run_compiler_popcount(RUN_UINT_32 runValue)
+{
+    runValue -= (runValue >> 1U) & 0x55555555U;
+    runValue = (runValue & 0x33333333U) +
+               ((runValue >> 2U) & 0x33333333U);
+    runValue = (runValue + (runValue >> 4U)) & 0x0F0F0F0FU;
+    return (runValue * 0x01010101U) >> 24U;
+}
+
 #endif
 
