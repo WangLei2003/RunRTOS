@@ -11,11 +11,13 @@
 
 RUN_STATIC RunAssertHandler RunAssertHandlerInstance;
 
+/* Installs or clears the optional user assertion hook. */
 RUN_VOID run_assert_set_handler(RunAssertHandler runHandler)
 {
     RunAssertHandlerInstance = runHandler;
 }
 
+/* Reports a failed assertion, then enters the non-returning panic path. */
 RUN_BOOL run_assert_fail(RUN_CONST RUN_CHAR *runExpression,
                          RUN_CONST RUN_CHAR *runFile,
                          RUN_UINT_32 runLine,
@@ -29,6 +31,7 @@ RUN_BOOL run_assert_fail(RUN_CONST RUN_CHAR *runExpression,
     return RUN_FALSE;
 }
 
+/* Provides the weak fail-safe panic target until a board overrides it. */
 RUN_ATTR_WEAK RUN_ATTR_NORETURN RUN_VOID run_panic(RUN_CONST RUN_CHAR *runReason,
                                                    RUN_CONST RUN_CHAR *runFile,
                                                    RUN_UINT_32 runLine,

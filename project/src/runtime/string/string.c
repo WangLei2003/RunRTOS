@@ -10,11 +10,13 @@
  */
 #include "runrtos/runtime/run_string.h"
 
+/* Validates that an empty view has no pointer and a nonempty view does. */
 RUN_STATIC RUN_BOOL run_string_is_valid_view(RunStringView runView)
 {
     return (runView.runLength == 0U) || (runView.runData != RUN_NULL);
 }
 
+/* Counts bytes up to the first NUL, treating a null pointer as empty. */
 RUN_SIZE run_string_length(RUN_CONST RUN_CHAR *runText)
 {
     RUN_SIZE runLength = 0U;
@@ -29,6 +31,7 @@ RUN_SIZE run_string_length(RUN_CONST RUN_CHAR *runText)
     return runLength;
 }
 
+/* Lexicographically compares two byte views without requiring NUL terminators. */
 RUN_INT_32 run_string_compare_view(RunStringView runLeft, RunStringView runRight)
 {
     RUN_SIZE runCount = RUN_MIN(runLeft.runLength, runRight.runLength);
@@ -48,11 +51,13 @@ RUN_INT_32 run_string_compare_view(RunStringView runLeft, RunStringView runRight
     return (runLeft.runLength < runRight.runLength) ? -1 : 1;
 }
 
+/* Reports whether two views contain the same byte sequence. */
 RUN_BOOL run_string_equal_view(RunStringView runLeft, RunStringView runRight)
 {
     return run_string_compare_view(runLeft, runRight) == 0;
 }
 
+/* Grows owned storage while preserving the old value on allocation failure. */
 RUN_STATIC RunStatus run_string_reserve(RunString *runString, RUN_SIZE runCapacity)
 {
     RUN_UINT_8 *runNewData;
@@ -85,6 +90,7 @@ RUN_STATIC RunStatus run_string_reserve(RunString *runString, RUN_SIZE runCapaci
     return RUN_STATUS_OK;
 }
 
+/* Creates an owned string from a NUL-terminated source. */
 RunStatus run_string_from_cstr(RunMemory *runMemory,
                                RUN_CONST RUN_CHAR *runText,
                                RunString *runString)
@@ -99,6 +105,7 @@ RunStatus run_string_from_cstr(RunMemory *runMemory,
     return run_string_assign_view(runMemory, runView, runString);
 }
 
+/* Assigns a byte view to an uninitialized owned string object. */
 RunStatus run_string_assign_view(RunMemory *runMemory,
                                  RunStringView runView,
                                  RunString *runString)
@@ -127,6 +134,7 @@ RunStatus run_string_assign_view(RunMemory *runMemory,
     return RUN_STATUS_OK;
 }
 
+/* Appends a byte view, checking overflow before allocating additional storage. */
 RunStatus run_string_append_view(RunString *runString, RunStringView runView)
 {
     RunStatus runStatus;
@@ -156,6 +164,7 @@ RunStatus run_string_append_view(RunString *runString, RunStringView runView)
     return RUN_STATUS_OK;
 }
 
+/* Returns a non-owning view of the current string contents. */
 RunStringView run_string_as_view(RUN_CONST RunString *runString)
 {
     RunStringView runView = RUN_STRING_VIEW_EMPTY;
@@ -167,6 +176,7 @@ RunStringView run_string_as_view(RUN_CONST RunString *runString)
     return runView;
 }
 
+/* Releases owned storage and returns the string object to its empty state. */
 RUN_VOID run_string_deinit(RunString *runString)
 {
     if ((runString != RUN_NULL) && (runString->runData != RUN_NULL))

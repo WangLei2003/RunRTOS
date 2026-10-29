@@ -2,10 +2,10 @@
 # RunRTOS - configure-time conformance checks
 #
 # Layer: build
-# Purpose: Reject missing file contracts, banned headers, relative public
-#          includes, and upward dependencies.
-# Constraint: The scanner covers include/runrtos and src; exceptions require a
-#             separate reviewed standards change rather than weakening this script.
+# Purpose: Reject missing file/function contracts, banned headers, relative
+#          public includes, and upward dependencies.
+# Constraint: The scanner covers include/runrtos, src, and host tests; exceptions
+#             require a reviewed standards change rather than weakening this script.
 
 set(runProjectRoot "${CMAKE_CURRENT_LIST_DIR}/..")
 set(runLayerOrder core runtime kernel arch drivers bsp components applications)
@@ -14,6 +14,44 @@ set(runBannedHeaders
     inttypes.h limits.h stdarg.h stdatomic.h setjmp.h signal.h
     time.h math.h ctype.h errno.h
 )
+set(runCModifiers
+    "((RUN_STATIC|RUN_INLINE|RUN_FORCE_INLINE|RUN_NOINLINE|RUN_CONST|RUN_ATTR_[A-Z0-9_]+|WINAPI)[ \t\r\n]+)*")
+set(runCReturnType
+    "(RUN_[A-Z0-9_]+|Run[A-Za-z0-9_]+|unsigned|int|LPVOID|DWORD)")
+set(runCFunctionStart
+    "[ \t]*${runCModifiers}${runCReturnType}[ \t\r\n]*\\*?[ \t\r\n]+[A-Za-z_][A-Za-z0-9_]*[ \t\r\n]*\\([^;{}]*\\)[ \t\r\n]*\\{")
+set(runCComment
+    "(^|\n)[ \t]*(//[^\n]*|/\\*[^*\n]*\\*/)[ \t\r\n]+")
+
+file(GLOB_RECURSE runCImplementationFiles
+    "${runProjectRoot}/include/runrtos/*.h"
+    "${runProjectRoot}/src/*.c"
+    "${runProjectRoot}/tests/host/*.c"
+)
+foreach(runFile IN LISTS runCImplementationFiles)
+    file(READ "${runFile}" runContents)
+    string(REGEX REPLACE "${runCComment}${runCFunctionStart}" ""
+           runRemaining "${runContents}")
+    if(runRemaining MATCHES "${runCFunctionStart}")
+        message(FATAL_ERROR
+            "RunRTOS function comment violation: ${runFile} has a function "
+            "definition without an adjacent single-line purpose comment")
+    endif()
+endforeach()
+
+file(GLOB_RECURSE runAssemblyFiles "${runProjectRoot}/src/*.S")
+foreach(runFile IN LISTS runAssemblyFiles)
+    file(READ "${runFile}" runContents)
+    string(REGEX REPLACE
+           "(^|\n)[ \t]*@[^\n]*\n[ \t]*[A-Za-z_][A-Za-z0-9_]*:[ \t]*"
+           "" runRemaining "${runContents}")
+    if(runRemaining MATCHES
+       "(^|\n)[ \t]*[A-Za-z_][A-Za-z0-9_]*:[ \t]*")
+        message(FATAL_ERROR
+            "RunRTOS function comment violation: ${runFile} has an assembly "
+            "entry label without an adjacent @ purpose comment")
+    endif()
+endforeach()
 
 file(GLOB_RECURSE runImplementationFiles
     "${runProjectRoot}/include/runrtos/*.h"

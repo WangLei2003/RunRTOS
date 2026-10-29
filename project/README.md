@@ -6,7 +6,7 @@ STM32F103RBT6 为首发平台，目标是在保持内核确定性、驱动框架
 
 ## 当前状态
 
-项目处于 `0.1.0` 开发阶段。当前基线包含：
+项目已完成 `0.1.0` 本地软件与 STM32F103RBT6 板端验收。当前基线包含：
 
 - C17、freestanding、无 libc/CMSIS/ST HAL 依赖的运行时；
 - RunRTOS 自有类型、编译器与字符串规范；
@@ -14,6 +14,9 @@ STM32F103RBT6 为首发平台，目标是在保持内核确定性、驱动框架
 - Cortex-M3 与 STM32F103RBT6 板级移植；
 - GPIO、UART、SPI、I2C 设备框架；
 - 主机单元测试、板端自检和 Shell。
+
+所有函数定义均须带紧邻的用途注释；该规则由 CMake 配置阶段自动检查，
+详见 `docs/standards/coding-style.md`。
 
 ## 快速开始
 

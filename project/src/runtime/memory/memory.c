@@ -12,12 +12,14 @@
 
 #define RUN_MEMORY_CLASS_COUNT 32U
 
+/* Rounds an address or size upward to the requested power-of-two boundary. */
 RUN_STATIC RUN_SIZE run_memory_align_up(RUN_SIZE runValue, RUN_SIZE runAlignment)
 {
     /* Alignment is always a power of two, so mask low bits instead of dividing. */
     return (runValue + (runAlignment - (RUN_SIZE)1U)) & ~(runAlignment - (RUN_SIZE)1U);
 }
 
+/* Maps a byte size to its floor(log2) free-list class. */
 RUN_STATIC RUN_UINT_32 run_memory_class(RUN_SIZE runSize)
 {
     RUN_UINT_32 runClass = 0U;
@@ -29,12 +31,14 @@ RUN_STATIC RUN_UINT_32 run_memory_class(RUN_SIZE runSize)
     return runClass;
 }
 
+/* Returns the intrusive links stored in a free block's payload. */
 RUN_STATIC RunMemoryFreeLinks *run_memory_links(RunMemoryBlock *runBlock)
 {
     /* Reuse the payload of a free block for intrusive list links. */
     return (RunMemoryFreeLinks *)(RUN_VOID *)((RUN_UINT_8 *)runBlock + sizeof(RunMemoryBlock));
 }
 
+/* Publishes a free block into its size class and updates the class bitmap. */
 RUN_STATIC RUN_VOID run_memory_insert(RunMemory *runMemory, RunMemoryBlock *runBlock)
 {
     RUN_UINT_32 runClass = run_memory_class(runBlock->runSize);
@@ -50,6 +54,7 @@ RUN_STATIC RUN_VOID run_memory_insert(RunMemory *runMemory, RunMemoryBlock *runB
     runBlock->runMagic = RUN_MEMORY_BLOCK_FREE;
 }
 
+/* Unlinks a free block and clears an empty size class from the bitmap. */
 RUN_STATIC RUN_VOID run_memory_remove(RunMemory *runMemory, RunMemoryBlock *runBlock)
 {
     RUN_UINT_32 runClass = run_memory_class(runBlock->runSize);
@@ -74,6 +79,7 @@ RUN_STATIC RUN_VOID run_memory_remove(RunMemory *runMemory, RunMemoryBlock *runB
     runLinks->runPrevious = RUN_NULL;
 }
 
+/* Finds the first sufficiently large block in ascending size classes. */
 RUN_STATIC RunMemoryBlock *run_memory_find(RunMemory *runMemory, RUN_SIZE runNeed)
 {
     RUN_UINT_32 runClass = run_memory_class(runNeed);
@@ -98,6 +104,7 @@ RUN_STATIC RunMemoryBlock *run_memory_find(RunMemory *runMemory, RUN_SIZE runNee
     return RUN_NULL;
 }
 
+/* Initializes the allocator metadata and one arena-spanning free block. */
 RunStatus run_memory_init(RunMemory **runMemoryOut,
                           RUN_VOID *runArena,
                           RUN_SIZE runArenaSize)
@@ -150,6 +157,7 @@ RunStatus run_memory_init(RunMemory **runMemoryOut,
     return RUN_STATUS_OK;
 }
 
+/* Allocates aligned payload storage, splitting a free block when practical. */
 RunStatus run_memory_allocate(RunMemory *runMemory,
                               RUN_SIZE runSize,
                               RUN_SIZE runAlignment,
@@ -228,6 +236,7 @@ RunStatus run_memory_allocate(RunMemory *runMemory,
     return RUN_STATUS_OK;
 }
 
+/* Releases a payload and immediately coalesces adjacent free physical blocks. */
 RunStatus run_memory_release(RunMemory *runMemory, RUN_VOID *runBlock)
 {
     RunMemoryBlock *runCurrent;
@@ -280,6 +289,7 @@ RunStatus run_memory_release(RunMemory *runMemory, RUN_VOID *runBlock)
     return RUN_STATUS_OK;
 }
 
+/* Copies current usage, peak, and largest-free-block statistics. */
 RUN_VOID run_memory_get_stats(RunMemory *runMemory, RunMemoryStats *runStats)
 {
     RunMemoryBlock *runBlock;
@@ -311,6 +321,7 @@ RUN_VOID run_memory_get_stats(RunMemory *runMemory, RunMemoryStats *runStats)
     runStats->runFailureCount = runMemory->runFailureCount;
 }
 
+/* Walks physical neighbors to verify allocator sizes and back-links. */
 RunStatus run_memory_check(RunMemory *runMemory)
 {
     RunMemoryBlock *runBlock;
@@ -338,6 +349,7 @@ RunStatus run_memory_check(RunMemory *runMemory)
     return ((RUN_SIZE)runBlock == runArenaEnd) ? RUN_STATUS_OK : RUN_STATUS_ERROR;
 }
 
+/* Copies a non-overlapping byte range without a libc dependency. */
 RUN_VOID *run_memory_copy(RUN_VOID *runDestination,
                           RUN_CONST RUN_VOID *runSource,
                           RUN_SIZE runSize)
@@ -351,6 +363,7 @@ RUN_VOID *run_memory_copy(RUN_VOID *runDestination,
     return runDestination;
 }
 
+/* Moves overlapping byte ranges in the safe direction. */
 RUN_VOID *run_memory_move(RUN_VOID *runDestination,
                           RUN_CONST RUN_VOID *runSource,
                           RUN_SIZE runSize)
@@ -378,6 +391,7 @@ RUN_VOID *run_memory_move(RUN_VOID *runDestination,
     return runDestination;
 }
 
+/* Fills a byte range with the low byte of the supplied value. */
 RUN_VOID *run_memory_set(RUN_VOID *runDestination, RUN_INT_32 runValue, RUN_SIZE runSize)
 {
     RUN_UINT_8 *runBytes = (RUN_UINT_8 *)runDestination;
@@ -388,6 +402,7 @@ RUN_VOID *run_memory_set(RUN_VOID *runDestination, RUN_INT_32 runValue, RUN_SIZE
     return runDestination;
 }
 
+/* Lexicographically compares two byte ranges. */
 RUN_INT_32 run_memory_compare(RUN_CONST RUN_VOID *runLeft,
                               RUN_CONST RUN_VOID *runRight,
                               RUN_SIZE runSize)

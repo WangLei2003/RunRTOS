@@ -9,6 +9,7 @@
  */
 #include "runrtos/core/run_types.h"
 
+/* Returns the stable diagnostic spelling for a status value. */
 RUN_CONST RUN_CHAR *run_status_name(RunStatus runStatus)
 {
     switch (runStatus)

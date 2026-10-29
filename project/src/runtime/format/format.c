@@ -17,6 +17,7 @@ typedef RUN_STRUCT RunFormatContext
     RUN_SIZE runWritten;
 } RunFormatContext;
 
+/* Emits one format fragment and accounts for its logical output length. */
 RUN_STATIC RUN_VOID run_format_emit(RunFormatContext *runContext,
                                    RUN_CONST RUN_CHAR *runData,
                                    RUN_SIZE runLength)
@@ -28,6 +29,7 @@ RUN_STATIC RUN_VOID run_format_emit(RunFormatContext *runContext,
     runContext->runWritten += runLength;
 }
 
+/* Emits a repeated padding character without allocating a large temporary. */
 RUN_STATIC RUN_VOID run_format_repeat(RunFormatContext *runContext,
                                      RUN_CHAR runCharacter,
                                      RUN_SIZE runCount)
@@ -42,6 +44,7 @@ RUN_STATIC RUN_VOID run_format_repeat(RunFormatContext *runContext,
     }
 }
 
+/* Formats an unsigned integer with optional padding and base selection. */
 RUN_STATIC RUN_VOID run_format_unsigned(RunFormatContext *runContext,
                                        RUN_UINT_64 runValue,
                                        RUN_UINT_32 runBase,
@@ -71,6 +74,7 @@ RUN_STATIC RUN_VOID run_format_unsigned(RunFormatContext *runContext,
     }
 }
 
+/* Formats a signed integer while safely handling the minimum value. */
 RUN_STATIC RUN_VOID run_format_signed(RunFormatContext *runContext,
                                      RUN_INT_64 runValue,
                                      RUN_UINT_32 runWidth,
@@ -98,6 +102,7 @@ RUN_STATIC RUN_VOID run_format_signed(RunFormatContext *runContext,
     run_format_unsigned(runContext, runMagnitude, 10U, RUN_FALSE, runWidth, runPad);
 }
 
+/* Consumes a va_list and incrementally emits the supported format fields. */
 RunStatus run_format(RunFormatWrite runWrite,
                      RUN_VOID *runContext,
                      RUN_CONST RUN_CHAR *runFormat,
@@ -240,6 +245,7 @@ typedef RUN_STRUCT RunFormatBufferContext
     RUN_BOOL runOverflow;
 } RunFormatBufferContext;
 
+/* Copies formatter fragments into bounded storage and records truncation. */
 RUN_STATIC RUN_VOID run_format_buffer_write(RUN_CONST RUN_CHAR *runData,
                                             RUN_SIZE runLength,
                                             RUN_VOID *runContext)
@@ -261,6 +267,7 @@ RUN_STATIC RUN_VOID run_format_buffer_write(RUN_CONST RUN_CHAR *runData,
     }
 }
 
+/* Formats into a bounded buffer and always preserves a terminating NUL. */
 RunStatus run_format_buffer(RUN_CHAR *runBuffer,
                             RUN_SIZE runBufferSize,
                             RUN_SIZE *runLengthOut,
@@ -294,6 +301,7 @@ RunStatus run_format_buffer(RUN_CHAR *runBuffer,
     return runStatus;
 }
 
+/* Parses an entire unsigned decimal string with strict trailing-byte checking. */
 RUN_UINT_64 run_format_parse_u64(RUN_CONST RUN_CHAR *runText, RUN_BOOL *runValidOut)
 {
     RUN_UINT_64 runValue = 0U;
@@ -319,6 +327,7 @@ RUN_UINT_64 run_format_parse_u64(RUN_CONST RUN_CHAR *runText, RUN_BOOL *runValid
     return runValue;
 }
 
+/* Parses and range-checks an unsigned 32-bit decimal value. */
 RUN_BOOL run_format_parse_u32(RUN_CONST RUN_CHAR *runText, RUN_UINT_32 *runValueOut)
 {
     RUN_BOOL runValid;
