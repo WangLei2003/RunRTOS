@@ -29,6 +29,7 @@ RUN_STATIC RUN_VOID *RunMockSpiArgument;
 RUN_STATIC RunStatus RunMockI2cStatus;
 RUN_STATIC RUN_VOID *RunMockI2cArgument;
 
+/* Records UART completion data for generic driver dispatch assertions. */
 RUN_STATIC RUN_VOID run_mock_uart_completion(RunDevice *runDevice,
                                              RunStatus runStatus,
                                              RUN_SIZE runTransferred,
@@ -40,6 +41,7 @@ RUN_STATIC RUN_VOID run_mock_uart_completion(RunDevice *runDevice,
     RunMockUartArgument = runArgument;
 }
 
+/* Records SPI completion data for generic driver dispatch assertions. */
 RUN_STATIC RUN_VOID run_mock_spi_completion(RunDevice *runDevice,
                                             RunStatus runStatus,
                                             RUN_VOID *runArgument)
@@ -49,6 +51,7 @@ RUN_STATIC RUN_VOID run_mock_spi_completion(RunDevice *runDevice,
     RunMockSpiArgument = runArgument;
 }
 
+/* Records I2C completion data for generic driver dispatch assertions. */
 RUN_STATIC RUN_VOID run_mock_i2c_completion(RunDevice *runDevice,
                                             RunStatus runStatus,
                                             RUN_VOID *runArgument)
@@ -58,6 +61,7 @@ RUN_STATIC RUN_VOID run_mock_i2c_completion(RunDevice *runDevice,
     RunMockI2cArgument = runArgument;
 }
 
+/* Validates the canonical 115200 8N1 UART configuration. */
 RUN_STATIC RunStatus run_mock_uart_configure(RunDevice *runDevice,
                                              RUN_UINT_32 runBaudRate,
                                              RUN_UINT_8 runDataBits,
@@ -70,6 +74,7 @@ RUN_STATIC RunStatus run_mock_uart_configure(RunDevice *runDevice,
         RUN_STATUS_OK : RUN_STATUS_INVALID_ARGUMENT;
 }
 
+/* Returns immediate success for the mock blocking UART write. */
 RUN_STATIC RunStatus run_mock_uart_write(RunDevice *runDevice,
                                          RUN_CONST RUN_UINT_8 *runData,
                                          RUN_SIZE runLength,
@@ -82,6 +87,7 @@ RUN_STATIC RunStatus run_mock_uart_write(RunDevice *runDevice,
     return RUN_STATUS_OK;
 }
 
+/* Claims the mock UART transmitter and prepares deferred completion state. */
 RUN_STATIC RunStatus run_mock_uart_write_async(RunDevice *runDevice,
                                                RUN_CONST RUN_UINT_8 *runData,
                                                RUN_SIZE runLength,
@@ -106,6 +112,7 @@ RUN_STATIC RunStatus run_mock_uart_write_async(RunDevice *runDevice,
     return RUN_STATUS_OK;
 }
 
+/* Models an empty UART receiver with a timeout result. */
 RUN_STATIC RunStatus run_mock_uart_read(RunDevice *runDevice,
                                         RUN_UINT_8 *runData,
                                         RUN_SIZE runLength,
@@ -120,6 +127,7 @@ RUN_STATIC RunStatus run_mock_uart_read(RunDevice *runDevice,
     return RUN_STATUS_TIMEOUT;
 }
 
+/* Returns immediate success for the mock UART flush. */
 RUN_STATIC RunStatus run_mock_uart_flush(RunDevice *runDevice,
                                          RunTimeMs runTimeout)
 {
@@ -128,6 +136,7 @@ RUN_STATIC RunStatus run_mock_uart_flush(RunDevice *runDevice,
     return RUN_STATUS_OK;
 }
 
+/* Returns immediate success for the mock blocking SPI transfer. */
 RUN_STATIC RunStatus run_mock_spi_transfer(RunDevice *runDevice,
                                            RUN_CONST RUN_UINT_8 *runTransmit,
                                            RUN_UINT_8 *runReceive,
@@ -142,6 +151,7 @@ RUN_STATIC RunStatus run_mock_spi_transfer(RunDevice *runDevice,
     return RUN_STATUS_OK;
 }
 
+/* Claims the mock SPI controller and prepares a deferred error result. */
 RUN_STATIC RunStatus run_mock_spi_transfer_async(
     RunDevice *runDevice,
     RUN_CONST RUN_UINT_8 *runTransmit,
@@ -166,6 +176,7 @@ RUN_STATIC RunStatus run_mock_spi_transfer_async(
     return RUN_STATUS_OK;
 }
 
+/* Returns immediate success for the mock blocking I2C transaction. */
 RUN_STATIC RunStatus run_mock_i2c_transaction(RunDevice *runDevice,
                                               RUN_UINT_16 runAddress,
                                               RUN_CONST RUN_UINT_8 *runWriteData,
@@ -184,6 +195,7 @@ RUN_STATIC RunStatus run_mock_i2c_transaction(RunDevice *runDevice,
     return RUN_STATUS_OK;
 }
 
+/* Claims the mock I2C controller and prepares a deferred completion. */
 RUN_STATIC RunStatus run_mock_i2c_transaction_async(
     RunDevice *runDevice,
     RUN_UINT_16 runAddress,
@@ -230,6 +242,7 @@ RUN_STATIC RUN_CONST RunI2cOperations RunMockI2cOperations = {
     run_mock_i2c_transaction_async
 };
 
+/* Executes driver forwarding, ownership, and completion contract tests. */
 RUN_VOID run_test_driver_suite(RunTestContext *runContext)
 {
     RunDeviceConfig runConfig;

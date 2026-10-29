@@ -85,6 +85,7 @@ RUN_STATIC RunThread *RunTimerThread;
 
 RUN_STATIC RUN_VOID run_timer_insert(RunTimer *runTimer);
 
+/* Wakes every waiter with an object-specific deletion or timeout status. */
 RUN_STATIC RUN_VOID run_sync_destroy_waiters(RunWaitList *runWaitList, RunStatus runStatus)
 {
     RunThread *runThread;
@@ -95,6 +96,7 @@ RUN_STATIC RUN_VOID run_sync_destroy_waiters(RunWaitList *runWaitList, RunStatus
     }
 }
 
+/* Dispatches due timer callbacks and applies lifecycle changes after each call. */
 RUN_STATIC RUN_VOID run_timer_service_entry(RUN_VOID *runArgument)
 {
     (RUN_VOID)runArgument;
@@ -175,6 +177,7 @@ RUN_STATIC RUN_VOID run_timer_service_entry(RUN_VOID *runArgument)
     }
 }
 
+/* Creates the dedicated timer service thread exactly once. */
 RunStatus run_timer_system_init(RUN_VOID)
 {
     RunThreadConfig runConfig = {
@@ -187,6 +190,7 @@ RunStatus run_timer_system_init(RUN_VOID)
     return run_kernel_create_internal(&runConfig, &RunTimerThread);
 }
 
+/* Allocates and initializes a counting semaphore with a fixed maximum. */
 RunStatus run_semaphore_create(RUN_UINT_32 runInitialCount,
                                RUN_UINT_32 runMaximumCount,
                                RunSemaphore **runSemaphoreOut)
@@ -220,6 +224,7 @@ RunStatus run_semaphore_create(RUN_UINT_32 runInitialCount,
     return runStatus;
 }
 
+/* Removes a semaphore and wakes blocked callers with DELETED status. */
 RunStatus run_semaphore_delete(RunSemaphore *runSemaphore)
 {
     RunCriticalState runState;
@@ -238,6 +243,7 @@ RunStatus run_semaphore_delete(RunSemaphore *runSemaphore)
     return runStatus;
 }
 
+/* Takes one count, blocking up to the requested timeout. */
 RunStatus run_semaphore_take(RunSemaphore *runSemaphore, RunTimeMs runTimeout)
 {
     RunCriticalState runState;
@@ -263,6 +269,7 @@ RunStatus run_semaphore_take(RunSemaphore *runSemaphore, RunTimeMs runTimeout)
     return run_kernel_block_current(runTimeout, &runSemaphore->runWaiters, RUN_NULL);
 }
 
+/* Non-blocking semaphore take for interrupt context. */
 RunStatus run_semaphore_take_from_isr(RunSemaphore *runSemaphore)
 {
     RunCriticalState runState;
@@ -281,6 +288,7 @@ RunStatus run_semaphore_take_from_isr(RunSemaphore *runSemaphore)
     return runStatus;
 }
 
+/* Adds one semaphore count or directly wakes its oldest waiter. */
 RunStatus run_semaphore_give(RunSemaphore *runSemaphore)
 {
     RunThread *runThread;
@@ -313,6 +321,7 @@ RunStatus run_semaphore_give(RunSemaphore *runSemaphore)
     return runStatus;
 }
 
+/* Adds one semaphore count from interrupt context. */
 RunStatus run_semaphore_give_from_isr(RunSemaphore *runSemaphore)
 {
     RunThread *runThread;
@@ -340,12 +349,14 @@ RunStatus run_semaphore_give_from_isr(RunSemaphore *runSemaphore)
     return runStatus;
 }
 
+/* Records a mutex in a thread's inherited-priority ownership set. */
 RUN_STATIC RUN_VOID run_thread_add_held_mutex(RunThread *runThread, RunMutex *runMutex)
 {
     runMutex->runNext = runThread->runHeldMutexes;
     runThread->runHeldMutexes = runMutex;
 }
 
+/* Removes an unlocked mutex from a thread's ownership set. */
 RUN_STATIC RUN_VOID run_thread_remove_held_mutex(RunThread *runThread, RunMutex *runMutex)
 {
     RunMutex *runCurrent = runThread->runHeldMutexes;
@@ -370,6 +381,7 @@ RUN_STATIC RUN_VOID run_thread_remove_held_mutex(RunThread *runThread, RunMutex 
     }
 }
 
+/* Recomputes effective priority from the highest-priority held mutex waiter. */
 RUN_STATIC RUN_VOID run_thread_recompute_priority(RunThread *runThread)
 {
     RUN_UINT_8 runPriority = runThread->runBasePriority;
@@ -393,6 +405,7 @@ RUN_STATIC RUN_VOID run_thread_recompute_priority(RunThread *runThread)
     run_kernel_thread_set_priority(runThread, runPriority);
 }
 
+/* Allocates an unowned mutex with the configured recursion policy. */
 RunStatus run_mutex_create(RUN_CONST RunMutexConfig *runConfig, RunMutex **runMutexOut)
 {
     RunMutex *runMutex;
@@ -417,6 +430,7 @@ RunStatus run_mutex_create(RUN_CONST RunMutexConfig *runConfig, RunMutex **runMu
     return runStatus;
 }
 
+/* Deletes an unowned mutex or rejects deletion while locked or waited on. */
 RunStatus run_mutex_delete(RunMutex *runMutex)
 {
     RunCriticalState runState;
@@ -438,6 +452,7 @@ RunStatus run_mutex_delete(RunMutex *runMutex)
     return runStatus;
 }
 
+/* Acquires a mutex, applying recursion and priority inheritance as configured. */
 RunStatus run_mutex_lock(RunMutex *runMutex, RunTimeMs runTimeout)
 {
     RunThread *runCurrent;
@@ -481,6 +496,7 @@ RunStatus run_mutex_lock(RunMutex *runMutex, RunTimeMs runTimeout)
     return run_kernel_block_current(runTimeout, &runMutex->runWaiters, RUN_NULL);
 }
 
+/* Releases one recursion level and transfers ownership under priority inheritance. */
 RunStatus run_mutex_unlock(RunMutex *runMutex)
 {
     RunThread *runCurrent;
@@ -529,6 +545,7 @@ RunStatus run_mutex_unlock(RunMutex *runMutex)
     return RUN_STATUS_OK;
 }
 
+/* Allocates fixed-size queue storage and independent sender/receiver wait lists. */
 RunStatus run_queue_create(RUN_SIZE runItemSize,
                            RUN_UINT_32 runCapacity,
                            RunQueue **runQueueOut)
@@ -572,6 +589,7 @@ RunStatus run_queue_create(RUN_SIZE runItemSize,
     return runStatus;
 }
 
+/* Deletes a queue and wakes both sender and receiver waiters. */
 RunStatus run_queue_delete(RunQueue *runQueue)
 {
     RunCriticalState runState;
@@ -595,6 +613,7 @@ RunStatus run_queue_delete(RunQueue *runQueue)
     return runStatus;
 }
 
+/* Copies one item into the ring's current head slot. */
 RUN_STATIC RUN_VOID run_queue_write(RunQueue *runQueue, RUN_CONST RUN_VOID *runItem)
 {
     /* Count is the source of truth; head need not be reset on wrap. */
@@ -604,6 +623,7 @@ RUN_STATIC RUN_VOID run_queue_write(RunQueue *runQueue, RUN_CONST RUN_VOID *runI
     runQueue->runCount++;
 }
 
+/* Copies the oldest ring item to the caller and advances the head index. */
 RUN_STATIC RUN_VOID run_queue_read(RunQueue *runQueue, RUN_VOID *runItem)
 {
     run_memory_copy(runItem,
@@ -613,6 +633,7 @@ RUN_STATIC RUN_VOID run_queue_read(RunQueue *runQueue, RUN_VOID *runItem)
     runQueue->runCount--;
 }
 
+/* Sends an item from thread context with an optional bounded wait. */
 RunStatus run_queue_send(RunQueue *runQueue,
                          RUN_CONST RUN_VOID *runItem,
                          RunTimeMs runTimeout)
@@ -657,6 +678,7 @@ RunStatus run_queue_send(RunQueue *runQueue,
     }
 }
 
+/* Non-blocking queue send for interrupt context. */
 RunStatus run_queue_send_from_isr(RunQueue *runQueue, RUN_CONST RUN_VOID *runItem)
 {
     RunThread *runThread;
@@ -682,6 +704,7 @@ RunStatus run_queue_send_from_isr(RunQueue *runQueue, RUN_CONST RUN_VOID *runIte
     return RUN_STATUS_OK;
 }
 
+/* Receives one queue item in thread context with timeout support. */
 RunStatus run_queue_receive(RunQueue *runQueue, RUN_VOID *runItem, RunTimeMs runTimeout)
 {
     RunThread *runThread;
@@ -720,6 +743,7 @@ RunStatus run_queue_receive(RunQueue *runQueue, RUN_VOID *runItem, RunTimeMs run
     }
 }
 
+/* Non-blocking queue receive for interrupt context. */
 RunStatus run_queue_receive_from_isr(RunQueue *runQueue, RUN_VOID *runItem)
 {
     RunThread *runThread;
@@ -745,6 +769,7 @@ RunStatus run_queue_receive_from_isr(RunQueue *runQueue, RUN_VOID *runItem)
     return RUN_STATUS_OK;
 }
 
+/* Copies the oldest queue item without consuming it. */
 RunStatus run_queue_peek(RunQueue *runQueue, RUN_VOID *runItem)
 {
     RunCriticalState runState;
@@ -769,6 +794,7 @@ RunStatus run_queue_peek(RunQueue *runQueue, RUN_VOID *runItem)
     return runStatus;
 }
 
+/* Allocates an event group with no bits initially set. */
 RunStatus run_event_group_create(RunEventGroup **runEventGroupOut)
 {
     RunEventGroup *runEventGroup;
@@ -796,6 +822,7 @@ RunStatus run_event_group_create(RunEventGroup **runEventGroupOut)
     return runStatus;
 }
 
+/* Deletes an event group and wakes all current waiters. */
 RunStatus run_event_group_delete(RunEventGroup *runEventGroup)
 {
     RunCriticalState runState;
@@ -813,6 +840,7 @@ RunStatus run_event_group_delete(RunEventGroup *runEventGroup)
     return runStatus;
 }
 
+/* Wakes every waiter whose any/all condition now matches the event bits. */
 RUN_STATIC RUN_VOID run_event_group_awaken(RunEventGroup *runEventGroup)
 {
     RunThread *runThread;
@@ -826,6 +854,7 @@ RUN_STATIC RUN_VOID run_event_group_awaken(RunEventGroup *runEventGroup)
     }
 }
 
+/* Atomically sets event bits and evaluates waiting threads. */
 RunStatus run_event_group_set(RunEventGroup *runEventGroup, RUN_UINT_32 runBits)
 {
     RunCriticalState runState;
@@ -842,6 +871,7 @@ RunStatus run_event_group_set(RunEventGroup *runEventGroup, RUN_UINT_32 runBits)
     return RUN_STATUS_OK;
 }
 
+/* Sets event bits from interrupt context and requests preemption if needed. */
 RunStatus run_event_group_set_from_isr(RunEventGroup *runEventGroup, RUN_UINT_32 runBits)
 {
     RunCriticalState runState = run_arch_enter_critical();
@@ -860,6 +890,7 @@ RunStatus run_event_group_set_from_isr(RunEventGroup *runEventGroup, RUN_UINT_32
     return runStatus;
 }
 
+/* Clears selected event bits without affecting blocked waiters. */
 RunStatus run_event_group_clear(RunEventGroup *runEventGroup, RUN_UINT_32 runBits)
 {
     RunCriticalState runState;
@@ -875,6 +906,7 @@ RunStatus run_event_group_clear(RunEventGroup *runEventGroup, RUN_UINT_32 runBit
     return RUN_STATUS_OK;
 }
 
+/* Waits for any/all requested bits with optional automatic clearing. */
 RunStatus run_event_group_wait(RunEventGroup *runEventGroup,
                                RUN_UINT_32 runBits,
                                RUN_BOOL runWaitAll,
@@ -929,6 +961,7 @@ RunStatus run_event_group_wait(RunEventGroup *runEventGroup,
     }
 }
 
+/* Inserts a scheduled timer into wraparound-safe deadline order. */
 RUN_STATIC RUN_VOID run_timer_insert(RunTimer *runTimer)
 {
     RunTimer *runCurrent = RunTimerFirst;
@@ -951,6 +984,7 @@ RUN_STATIC RUN_VOID run_timer_insert(RunTimer *runTimer)
     }
 }
 
+/* Removes a timer from the deadline list if it is currently linked. */
 RUN_STATIC RUN_VOID run_timer_remove(RunTimer *runTimer)
 {
     RunTimer *runCurrent = RunTimerFirst;
@@ -976,6 +1010,7 @@ RUN_STATIC RUN_VOID run_timer_remove(RunTimer *runTimer)
     }
 }
 
+/* Removes a timer from both deadline and lifetime lists during deletion. */
 RUN_STATIC RUN_VOID run_timer_remove_all(RunTimer *runTimer)
 {
     RunTimer *runCurrent = RunTimerAll;
@@ -1000,6 +1035,7 @@ RUN_STATIC RUN_VOID run_timer_remove_all(RunTimer *runTimer)
     }
 }
 
+/* Allocates a stopped software timer and adds it to the lifetime registry. */
 RunStatus run_timer_create(RunTimerCallback runCallback,
                            RUN_VOID *runArgument,
                            RUN_BOOL runPeriodic,
@@ -1010,7 +1046,8 @@ RunStatus run_timer_create(RunTimerCallback runCallback,
     RunStatus runStatus;
     RUN_UINT_64 runTicksValue;
     RunCriticalState runState;
-    if ((runCallback == RUN_NULL) || (runTimerOut == RUN_NULL) || (runPeriod == 0U))
+    if ((runCallback == RUN_NULL) || (runTimerOut == RUN_NULL) ||
+        (runPeriodic && (runPeriod == 0U)))
     {
         return RUN_STATUS_INVALID_ARGUMENT;
     }
@@ -1059,6 +1096,7 @@ RunStatus run_timer_create(RunTimerCallback runCallback,
     return runStatus;
 }
 
+/* Deletes a timer immediately or defers release while its callback runs. */
 RunStatus run_timer_delete(RunTimer *runTimer)
 {
     RunCriticalState runState;
@@ -1092,6 +1130,7 @@ RunStatus run_timer_delete(RunTimer *runTimer)
     return runStatus;
 }
 
+/* Arms a timer with a fresh delay, including calls from its own callback. */
 RunStatus run_timer_start(RunTimer *runTimer, RunTimeMs runDelay)
 {
     RunCriticalState runState;
@@ -1134,6 +1173,7 @@ RunStatus run_timer_start(RunTimer *runTimer, RunTimeMs runDelay)
     return RUN_STATUS_OK;
 }
 
+/* Stops a timer without allowing its in-flight callback to reschedule it. */
 RunStatus run_timer_stop(RunTimer *runTimer)
 {
     RunCriticalState runState;
@@ -1162,6 +1202,7 @@ RunStatus run_timer_stop(RunTimer *runTimer)
     return RUN_STATUS_OK;
 }
 
+/* Returns one read-only timer snapshot in stable lifetime-list order. */
 RunStatus run_timer_get_info(RUN_SIZE runIndex, RunTimerInfo *runInfoOut)
 {
     RunTimer *runTimer;

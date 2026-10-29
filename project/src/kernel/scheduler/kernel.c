@@ -19,6 +19,7 @@ RunKernelState RunKernel;
 /* PendSV assembly reads this symbol directly, so it is kept separate from state. */
 RunThread *RUN_VOLATILE RunKernelCurrent;
 
+/* Appends a ready thread to its priority FIFO and updates the ready bitmap. */
 RUN_STATIC RUN_VOID run_kernel_ready_insert(RunThread *runThread)
 {
     RUN_UINT_32 runPriority = runThread->runPriority;
@@ -38,6 +39,7 @@ RUN_STATIC RUN_VOID run_kernel_ready_insert(RunThread *runThread)
     RunKernel.runReadyBitmap |= (1UL << runPriority);
 }
 
+/* Unlinks a ready thread and clears its bitmap bit when the FIFO becomes empty. */
 RUN_STATIC RUN_VOID run_kernel_ready_remove(RunThread *runThread)
 {
     RUN_UINT_32 runPriority = runThread->runPriority;
@@ -72,6 +74,7 @@ RUN_STATIC RUN_VOID run_kernel_ready_remove(RunThread *runThread)
     }
 }
 
+/* Selects and removes the first thread at the highest ready priority. */
 RUN_STATIC RunThread *run_kernel_ready_pop_highest(RUN_VOID)
 {
     RunThread *runThread;
@@ -90,6 +93,7 @@ RUN_STATIC RunThread *run_kernel_ready_pop_highest(RUN_VOID)
     return runThread;
 }
 
+/* Inserts a blocked thread into the wraparound-safe ordered timeout list. */
 RUN_STATIC RUN_VOID run_kernel_timeout_insert(RunThread *runThread)
 {
     RunThread *runCurrent = RunKernel.runTimeoutFirst;
@@ -116,6 +120,7 @@ RUN_STATIC RUN_VOID run_kernel_timeout_insert(RunThread *runThread)
     }
 }
 
+/* Unlinks a thread from the timeout list when it wakes or is deleted. */
 RUN_STATIC RUN_VOID run_kernel_timeout_remove(RunThread *runThread)
 {
     RunThread *runCurrent = RunKernel.runTimeoutFirst;
@@ -140,6 +145,7 @@ RUN_STATIC RUN_VOID run_kernel_timeout_remove(RunThread *runThread)
     }
 }
 
+/* Requests a context switch when a higher-priority thread becomes ready. */
 RUN_STATIC RUN_VOID run_kernel_update_switch_request(RUN_VOID)
 {
     if ((RunKernel.runCurrent != RUN_NULL) &&
@@ -154,6 +160,7 @@ RUN_STATIC RUN_VOID run_kernel_update_switch_request(RUN_VOID)
     }
 }
 
+/* Appends a thread to an object's intrusive doubly linked wait list. */
 RUN_VOID run_kernel_wait_list_append(RunWaitList *runWaitList, RunThread *runThread)
 {
     RUN_INVARIANT(runWaitList != RUN_NULL);
@@ -172,6 +179,7 @@ RUN_VOID run_kernel_wait_list_append(RunWaitList *runWaitList, RunThread *runThr
     runWaitList->runLast = runThread;
 }
 
+/* Removes a thread from whichever object wait list currently owns it. */
 RUN_VOID run_kernel_wait_list_remove(RunThread *runThread)
 {
     RunWaitList *runWaitList;
@@ -201,6 +209,7 @@ RUN_VOID run_kernel_wait_list_remove(RunThread *runThread)
     runThread->runWaitList = RUN_NULL;
 }
 
+/* Removes and returns the oldest thread from a wait list. */
 RunThread *run_kernel_wait_list_pop(RunWaitList *runWaitList)
 {
     RunThread *runThread;
@@ -213,6 +222,7 @@ RunThread *run_kernel_wait_list_pop(RunWaitList *runWaitList)
     return runThread;
 }
 
+/* Wakes a blocked thread with a status and makes it ready exactly once. */
 RUN_VOID run_kernel_ready_thread(RunThread *runThread, RunStatus runWakeStatus)
 {
     if ((runThread == RUN_NULL) || (runThread->runState == RUN_THREAD_TERMINATED))
@@ -237,6 +247,7 @@ RUN_VOID run_kernel_ready_thread(RunThread *runThread, RunStatus runWakeStatus)
     run_kernel_update_switch_request();
 }
 
+/* Reindexes a thread safely when its effective priority changes. */
 RUN_VOID run_kernel_thread_set_priority(RunThread *runThread,
                                         RUN_UINT_8 runPriority)
 {
@@ -264,6 +275,7 @@ RUN_VOID run_kernel_thread_set_priority(RunThread *runThread,
     run_kernel_update_switch_request();
 }
 
+/* Blocks the caller on a wait list and arms its optional timeout. */
 RunStatus run_kernel_block_current(RunTimeMs runTimeout,
                                    RunWaitList *runWaitList,
                                    RUN_UINT_32 *runWakeStatusOut)
@@ -315,6 +327,7 @@ RunStatus run_kernel_block_current(RunTimeMs runTimeout,
     return (RunStatus)runThread->runWakeStatus;
 }
 
+/* Validates API context and rejects memory operations from interrupt handlers. */
 RunStatus run_kernel_api_enter(RUN_BOOL runAllowIsr)
 {
     /* Dedicated *_from_isr paths bypass this guard and validate their own state. */
@@ -329,6 +342,7 @@ RunStatus run_kernel_api_enter(RUN_BOOL runAllowIsr)
     return RUN_STATUS_OK;
 }
 
+/* Invokes a thread entry function and terminates cleanly when it returns. */
 RUN_STATIC RUN_VOID run_thread_trampoline(RunThread *runThread)
 {
     /* Returning from user entry follows the same path as an explicit exit. */
@@ -336,11 +350,13 @@ RUN_STATIC RUN_VOID run_thread_trampoline(RunThread *runThread)
     run_thread_exit();
 }
 
+/* Provides the terminal address reached after a thread entry returns. */
 RUN_STATIC RUN_VOID run_thread_exit_stub(RUN_VOID)
 {
     run_thread_exit();
 }
 
+/* Allocates a thread and stack without applying ordinary-caller restrictions. */
 RunStatus run_kernel_create_internal(RUN_CONST RunThreadConfig *runConfig,
                                      RunThread **runThreadOut)
 {
@@ -414,6 +430,7 @@ RunStatus run_kernel_create_internal(RUN_CONST RunThreadConfig *runConfig,
     return RUN_STATUS_OK;
 }
 
+/* Allocates and publishes a ready application thread from thread context. */
 RunStatus run_thread_create(RUN_CONST RunThreadConfig *runConfig, RunThread **runThreadOut)
 {
     RunCriticalState runState;
@@ -428,6 +445,7 @@ RunStatus run_thread_create(RUN_CONST RunThreadConfig *runConfig, RunThread **ru
     return runStatus;
 }
 
+/* Checks that a handle still refers to a live thread with kernel magic. */
 RUN_BOOL run_kernel_validate_thread(RunThread *runThread)
 {
     /* Linear lookup also rejects stale/freed pointers before every public action. */
@@ -443,6 +461,7 @@ RUN_BOOL run_kernel_validate_thread(RunThread *runThread)
     return RUN_FALSE;
 }
 
+/* Unlinks a terminating thread from every scheduler and wait-list relation. */
 RUN_STATIC RUN_VOID run_kernel_remove_all_list(RunThread *runThread)
 {
     RunThread *runCurrent = RunKernel.runThreads;
@@ -467,6 +486,7 @@ RUN_STATIC RUN_VOID run_kernel_remove_all_list(RunThread *runThread)
     }
 }
 
+/* Releases a thread stack and object after it is no longer scheduled. */
 RUN_STATIC RUN_VOID run_thread_free(RunThread *runThread)
 {
     RunMemory *runMemory = runThread->runMemory;
@@ -480,6 +500,7 @@ RUN_STATIC RUN_VOID run_thread_free(RunThread *runThread)
     }
 }
 
+/* Terminates a thread immediately or defers self-deletion to context switch. */
 RunStatus run_thread_delete(RunThread *runThread)
 {
     RunCriticalState runState;
@@ -516,11 +537,13 @@ RunStatus run_thread_delete(RunThread *runThread)
     return RUN_STATUS_OK;
 }
 
+/* Returns the scheduler's current thread handle, or null before startup. */
 RunThread *run_thread_current(RUN_VOID)
 {
     return RunKernelCurrent;
 }
 
+/* Chooses the next thread and completes any deferred self-deletion. */
 RUN_VOID run_kernel_switch_prepare(RUN_VOID)
 {
     RunThread *runOld = RunKernel.runCurrent;
@@ -573,6 +596,7 @@ RUN_VOID run_kernel_switch_prepare(RUN_VOID)
     }
 }
 
+/* Triggers PendSV unless a scheduler lock defers the requested switch. */
 RUN_VOID run_kernel_request_switch(RUN_VOID)
 {
     /* Locking defers PendSV until run_scheduler_unlock observes count zero. */
@@ -583,6 +607,7 @@ RUN_VOID run_kernel_request_switch(RUN_VOID)
     }
 }
 
+/* Requests an immediate reschedule without changing thread state. */
 RUN_VOID run_scheduler_yield(RUN_VOID)
 {
     RunCriticalState runState = run_arch_enter_critical();
@@ -594,6 +619,7 @@ RUN_VOID run_scheduler_yield(RUN_VOID)
     run_arch_exit_critical(runState);
 }
 
+/* Blocks the caller for at least the requested duration rounded to ticks. */
 RunStatus run_thread_sleep(RunTimeMs runDuration)
 {
     RunStatus runStatus = run_kernel_api_enter(RUN_FALSE);
@@ -609,6 +635,7 @@ RunStatus run_thread_sleep(RunTimeMs runDuration)
     return run_kernel_block_current(runDuration, RUN_NULL, RUN_NULL);
 }
 
+/* Removes a thread from scheduling until a matching resume request. */
 RunStatus run_thread_suspend(RunThread *runThread)
 {
     RunCriticalState runState;
@@ -642,6 +669,7 @@ RunStatus run_thread_suspend(RunThread *runThread)
     return RUN_STATUS_OK;
 }
 
+/* Returns a suspended thread to its priority-ready queue. */
 RunStatus run_thread_resume(RunThread *runThread)
 {
     RunCriticalState runState;
@@ -662,6 +690,7 @@ RunStatus run_thread_resume(RunThread *runThread)
     return RUN_STATUS_OK;
 }
 
+/* Terminates the calling thread and requests a switch away from its context. */
 RUN_VOID run_thread_exit(RUN_VOID)
 {
     RunCriticalState runState = run_arch_enter_critical();
@@ -679,6 +708,7 @@ RUN_VOID run_thread_exit(RUN_VOID)
     }
 }
 
+/* Runs the lowest-priority loop that enters the architecture's low-power wait. */
 RUN_VOID run_kernel_idle_entry(RUN_VOID *runArgument)
 {
     (RUN_VOID)runArgument;
@@ -688,6 +718,7 @@ RUN_VOID run_kernel_idle_entry(RUN_VOID *runArgument)
     }
 }
 
+/* Creates idle, selects the initial thread, and transfers to the scheduler. */
 RUN_VOID run_scheduler_start(RUN_VOID)
 {
     RunCriticalState runState;
@@ -734,6 +765,7 @@ RUN_VOID run_scheduler_start(RUN_VOID)
     }
 }
 
+/* Advances time, expires sleeps, and applies round-robin time slicing. */
 RUN_VOID run_kernel_tick_from_isr(RUN_VOID)
 {
     RunThread *runTimeout;
@@ -774,11 +806,13 @@ RUN_VOID run_kernel_tick_from_isr(RUN_VOID)
     }
 }
 
+/* Reports whether execution is currently inside an exception handler. */
 RUN_BOOL run_kernel_is_in_isr(RUN_VOID)
 {
     return (run_arch_get_ipsr() != 0U) ? RUN_TRUE : RUN_FALSE;
 }
 
+/* Captures scheduler counters for thread-context diagnostics. */
 RUN_VOID run_kernel_get_stats(RunKernelStats *runStats)
 {
     if (runStats == RUN_NULL)
@@ -786,11 +820,13 @@ RUN_VOID run_kernel_get_stats(RunKernelStats *runStats)
         return;
     }
     runStats->runTicks = RunKernel.runTicks;
-    runStats->runReadyCount = (RUN_UINT_32)__builtin_popcount(RunKernel.runReadyBitmap);
+    runStats->runReadyCount =
+        run_compiler_popcount(RunKernel.runReadyBitmap);
     runStats->runContextSwitches = RunKernel.runContextSwitches;
     runStats->runThreadCount = RunKernel.runThreadCount;
 }
 
+/* Copies one thread's identity, state, and stack watermark snapshot. */
 RunStatus run_thread_get_stats(RunThread *runThread, RunThreadStats *runStats)
 {
     RUN_SIZE runUsed = 0U;
@@ -816,6 +852,7 @@ RunStatus run_thread_get_stats(RunThread *runThread, RunThreadStats *runStats)
     return RUN_STATUS_OK;
 }
 
+/* Enumerates one thread in stable scheduler order for safe diagnostics. */
 RunStatus run_thread_get_info(RUN_SIZE runIndex, RunThreadInfo *runInfoOut)
 {
     RunThread *runThread;
@@ -844,6 +881,7 @@ RunStatus run_thread_get_info(RUN_SIZE runIndex, RunThreadInfo *runInfoOut)
     return runStatus;
 }
 
+/* Inhibits preemption and increments the nested scheduler lock count. */
 RUN_VOID run_scheduler_lock(RUN_VOID)
 {
     RunCriticalState runState = run_arch_enter_critical();
@@ -851,6 +889,7 @@ RUN_VOID run_scheduler_lock(RUN_VOID)
     run_arch_exit_critical(runState);
 }
 
+/* Decrements the scheduler lock and switches when the outermost lock is released. */
 RUN_VOID run_scheduler_unlock(RUN_VOID)
 {
     RunCriticalState runState = run_arch_enter_critical();
@@ -866,6 +905,7 @@ RUN_VOID run_scheduler_unlock(RUN_VOID)
     run_arch_exit_critical(runState);
 }
 
+/* Validates allocator prerequisites and resets all scheduler state. */
 RunStatus run_kernel_init(RunMemory *runMemory)
 {
     if (runMemory == RUN_NULL)

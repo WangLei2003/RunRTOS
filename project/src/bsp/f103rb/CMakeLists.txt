@@ -8,6 +8,7 @@
 
 add_library(runrtos_bsp_f103rb STATIC
     board.c
+    external_storage.c
 )
 target_link_libraries(runrtos_bsp_f103rb PUBLIC
     runrtos_arch_cortex_m3

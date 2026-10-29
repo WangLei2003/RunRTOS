@@ -19,7 +19,12 @@
 typedef RUN_STRUCT RunBoardDevices
 {
     /* All handles are board-owned and must not be deleted by applications. */
+    RunMemory *runMemory;
     RunDevice *runLedPort;
+    RunDevice *runGpioA;
+    RunDevice *runGpioB;
+    RunDevice *runGpioC;
+    RunDevice *runGpioD;
     RunDevice *runUart1;
     RunDevice *runSpi2;
     RunDevice *runI2c1;
@@ -34,6 +39,26 @@ RunStatus run_board_init(RunBoardDevices *runDevicesOut);
 
 /* Starts the 1 kHz SysTick source after all boot-time objects have been created. */
 RunStatus run_board_start_tick(RUN_VOID);
+
+/* Monotonic count of EXTI callbacks from the four board keys. */
+RUN_UINT_32 run_board_get_key_press_count(RUN_VOID);
+
+/* 24C02 address 0x50, unshifted, with an eight-bit byte offset. */
+RunStatus run_board_24c02_read_byte(RunBoardDevices *runDevices,
+                                    RUN_UINT_8 runOffset,
+                                    RUN_UINT_8 *runValueOut);
+RunStatus run_board_24c02_write_byte(RunBoardDevices *runDevices,
+                                     RUN_UINT_8 runOffset,
+                                     RUN_UINT_8 runValue);
+/*
+ * Verifies a supported 2 MiB 25Q16-compatible JEDEC identity and reversibly
+ * tests sector zero. Accepted identities are Winbond W25Q16 (0xEF4015) and the
+ * BoYa BY25Q16 installed on some board revisions (0x684015). The routine
+ * requires a temporary contiguous 4 KiB allocator block and returns NO_MEMORY
+ * when unavailable. A power loss during the destructive phase may prevent the
+ * original sector from being restored.
+ */
+RunStatus run_board_w25q16_selftest(RunBoardDevices *runDevices);
 
 #endif
 

@@ -14,6 +14,7 @@
 
 #define RUN_TEST_RUNTIME_BLOCKS 96U
 
+/* Exercises allocator alignment, OOM, fragmentation, and random allocation. */
 RUN_STATIC RUN_VOID run_test_allocator_runtime(RunTestContext *runContext)
 {
     RUN_ATTR_ALIGNED(8) RUN_UINT_8 runArena[4096];
@@ -94,6 +95,7 @@ RUN_STATIC RUN_VOID run_test_allocator_runtime(RunTestContext *runContext)
     RUN_TEST_CHECK(runContext, runStats.runFailureCount != 0U);
 }
 
+/* Exercises string ownership and bounded formatting/parsing boundaries. */
 RUN_STATIC RUN_VOID run_test_strings_runtime(RunTestContext *runContext)
 {
     RUN_ATTR_ALIGNED(8) RUN_UINT_8 runArena[1024];
@@ -150,6 +152,7 @@ RUN_STATIC RUN_VOID run_test_strings_runtime(RunTestContext *runContext)
     RUN_TEST_STATUS(runContext, run_memory_check(runMemory), RUN_STATUS_OK);
 }
 
+/* Runs all runtime allocator, string, and format tests. */
 RUN_VOID run_test_runtime_suite(RunTestContext *runContext)
 {
     run_test_allocator_runtime(runContext);

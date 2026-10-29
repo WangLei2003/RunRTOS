@@ -108,7 +108,9 @@ RunStatus run_event_group_wait(RunEventGroup *runEventGroup,
 
 /*
  * Creates a stopped software timer. run_timer_start supplies the first delay; a
- * periodic timer then uses its configured runPeriod for later expirations.
+ * periodic timer then uses its configured nonzero runPeriod for later
+ * expirations. One-shot timers may use zero because their delay comes from
+ * run_timer_start.
  * Callbacks run in the timer service thread and must not block. start, stop, and
  * delete are legal from the callback; deletion is deferred until the callback
  * returns, and deletion from another thread during the callback is also safe.

@@ -28,6 +28,7 @@
 #define RUN_DEMCR_TRCENA (1UL << 24U)
 #define RUN_DWT_CTRL_CYCCNTENA (1UL << 0U)
 #define RUN_CORTEX_M_INITIAL_FRAME_WORDS 16U
+#define RUN_CORTEX_M_HARDWARE_FRAME_WORDS 8U
 #define RUN_CORTEX_M_XPSR_THUMB (1UL << 24U)
 
 RUN_EXTERN RUN_UINT_32 _estack;
@@ -59,40 +60,59 @@ RUN_VOID DebugMon_Handler(RUN_VOID);
 RUN_VOID PendSV_Handler(RUN_VOID);
 RUN_VOID SysTick_Handler(RUN_VOID);
 RUN_VOID Default_Handler(RUN_VOID);
+RUN_VOID EXTI0_IRQHandler(RUN_VOID);
+RUN_VOID EXTI1_IRQHandler(RUN_VOID);
+RUN_VOID EXTI2_IRQHandler(RUN_VOID);
+RUN_VOID EXTI3_IRQHandler(RUN_VOID);
+RUN_VOID EXTI4_IRQHandler(RUN_VOID);
+RUN_VOID EXTI9_5_IRQHandler(RUN_VOID);
+RUN_VOID EXTI15_10_IRQHandler(RUN_VOID);
+RUN_VOID I2C1_EV_IRQHandler(RUN_VOID);
+RUN_VOID I2C1_ER_IRQHandler(RUN_VOID);
+RUN_VOID SPI2_IRQHandler(RUN_VOID);
+RUN_VOID USART1_IRQHandler(RUN_VOID);
 
+/* Captures any unhandled exception in the fatal diagnostic path. */
 RUN_ATTR_NORETURN RUN_VOID Default_Handler(RUN_VOID)
 {
     run_panic("unhandled interrupt", __FILE__, (RUN_UINT_32)__LINE__, RUN_STATUS_ERROR);
 }
 
+/* Reports a non-maskable interrupt as an unrecoverable runtime fault. */
 RUN_ATTR_NORETURN RUN_VOID NMI_Handler(RUN_VOID)
 {
     run_panic("NMI", __FILE__, (RUN_UINT_32)__LINE__, RUN_STATUS_ERROR);
 }
 
+/* Reports a memory-management fault before stopping the system. */
 RUN_ATTR_NORETURN RUN_VOID MemManage_Handler(RUN_VOID)
 {
     run_panic("MemManage fault", __FILE__, (RUN_UINT_32)__LINE__, RUN_STATUS_ERROR);
 }
 
+/* Reports a bus fault before stopping the system. */
 RUN_ATTR_NORETURN RUN_VOID BusFault_Handler(RUN_VOID)
 {
     run_panic("Bus fault", __FILE__, (RUN_UINT_32)__LINE__, RUN_STATUS_ERROR);
 }
 
+/* Reports an illegal instruction or state usage fault. */
 RUN_ATTR_NORETURN RUN_VOID UsageFault_Handler(RUN_VOID)
 {
     run_panic("Usage fault", __FILE__, (RUN_UINT_32)__LINE__, RUN_STATUS_ERROR);
 }
 
+/* Provides the reserved supervisor-call vector for future privileged services. */
 RUN_VOID SVC_Handler(RUN_VOID)
 {
 }
 
+/* Provides the optional debug-monitor vector used by future debuggers. */
 RUN_VOID DebugMon_Handler(RUN_VOID)
 {
 }
 
+/* Selects MSP or PSP and forwards the fault frame to the C diagnostic handler. */
 RUN_ATTR_NAKED RUN_VOID HardFault_Handler(RUN_VOID)
 {
     /* EXC_RETURN bit 2 selects the interrupted thread's PSP instead of MSP. */
@@ -104,6 +124,7 @@ RUN_ATTR_NAKED RUN_VOID HardFault_Handler(RUN_VOID)
         "b run_hard_fault_c\n");
 }
 
+/* Saves the exception frame and fault status before entering panic. */
 RUN_ATTR_NORETURN RUN_VOID run_hard_fault_c(RunFaultFrame *runFrame)
 {
     RunFaultFrameLast.runR0 = runFrame->runR0;
@@ -119,6 +140,7 @@ RUN_ATTR_NORETURN RUN_VOID run_hard_fault_c(RunFaultFrame *runFrame)
     run_panic("HardFault", __FILE__, (RUN_UINT_32)__LINE__, RUN_STATUS_ERROR);
 }
 
+/* Advances kernel time and time slicing from the system tick exception. */
 RUN_VOID SysTick_Handler(RUN_VOID)
 {
     run_kernel_tick_from_isr();
@@ -140,6 +162,48 @@ RUN_CONST RUN_UINTPTR_TYPE RunVectorTable[] = {
     0U,
     (RUN_UINTPTR_TYPE)PendSV_Handler,
     (RUN_UINTPTR_TYPE)SysTick_Handler,
+    /* STM32F103 IRQ0..IRQ59. Unused sources remain fail-safe defaults. */
+    (RUN_UINTPTR_TYPE)Default_Handler,
+    (RUN_UINTPTR_TYPE)Default_Handler,
+    (RUN_UINTPTR_TYPE)Default_Handler,
+    (RUN_UINTPTR_TYPE)Default_Handler,
+    (RUN_UINTPTR_TYPE)Default_Handler,
+    (RUN_UINTPTR_TYPE)Default_Handler,
+    (RUN_UINTPTR_TYPE)EXTI0_IRQHandler,
+    (RUN_UINTPTR_TYPE)EXTI1_IRQHandler,
+    (RUN_UINTPTR_TYPE)EXTI2_IRQHandler,
+    (RUN_UINTPTR_TYPE)EXTI3_IRQHandler,
+    (RUN_UINTPTR_TYPE)EXTI4_IRQHandler,
+    (RUN_UINTPTR_TYPE)Default_Handler,
+    (RUN_UINTPTR_TYPE)Default_Handler,
+    (RUN_UINTPTR_TYPE)Default_Handler,
+    (RUN_UINTPTR_TYPE)Default_Handler,
+    (RUN_UINTPTR_TYPE)Default_Handler,
+    (RUN_UINTPTR_TYPE)Default_Handler,
+    (RUN_UINTPTR_TYPE)Default_Handler,
+    (RUN_UINTPTR_TYPE)Default_Handler,
+    (RUN_UINTPTR_TYPE)Default_Handler,
+    (RUN_UINTPTR_TYPE)Default_Handler,
+    (RUN_UINTPTR_TYPE)Default_Handler,
+    (RUN_UINTPTR_TYPE)Default_Handler,
+    (RUN_UINTPTR_TYPE)EXTI9_5_IRQHandler,
+    (RUN_UINTPTR_TYPE)Default_Handler,
+    (RUN_UINTPTR_TYPE)Default_Handler,
+    (RUN_UINTPTR_TYPE)Default_Handler,
+    (RUN_UINTPTR_TYPE)Default_Handler,
+    (RUN_UINTPTR_TYPE)Default_Handler,
+    (RUN_UINTPTR_TYPE)Default_Handler,
+    (RUN_UINTPTR_TYPE)Default_Handler,
+    (RUN_UINTPTR_TYPE)I2C1_EV_IRQHandler,
+    (RUN_UINTPTR_TYPE)I2C1_ER_IRQHandler,
+    (RUN_UINTPTR_TYPE)Default_Handler,
+    (RUN_UINTPTR_TYPE)Default_Handler,
+    (RUN_UINTPTR_TYPE)Default_Handler,
+    (RUN_UINTPTR_TYPE)SPI2_IRQHandler,
+    (RUN_UINTPTR_TYPE)USART1_IRQHandler,
+    (RUN_UINTPTR_TYPE)Default_Handler,
+    (RUN_UINTPTR_TYPE)Default_Handler,
+    (RUN_UINTPTR_TYPE)EXTI15_10_IRQHandler,
     (RUN_UINTPTR_TYPE)Default_Handler,
     (RUN_UINTPTR_TYPE)Default_Handler,
     (RUN_UINTPTR_TYPE)Default_Handler,
@@ -159,53 +223,12 @@ RUN_CONST RUN_UINTPTR_TYPE RunVectorTable[] = {
     (RUN_UINTPTR_TYPE)Default_Handler,
     (RUN_UINTPTR_TYPE)Default_Handler,
     (RUN_UINTPTR_TYPE)Default_Handler,
-    (RUN_UINTPTR_TYPE)Default_Handler,
-    (RUN_UINTPTR_TYPE)Default_Handler,
-    (RUN_UINTPTR_TYPE)Default_Handler,
-    (RUN_UINTPTR_TYPE)Default_Handler,
-    (RUN_UINTPTR_TYPE)Default_Handler,
-    (RUN_UINTPTR_TYPE)Default_Handler,
-    (RUN_UINTPTR_TYPE)Default_Handler,
-    (RUN_UINTPTR_TYPE)Default_Handler,
-    (RUN_UINTPTR_TYPE)Default_Handler,
-    (RUN_UINTPTR_TYPE)Default_Handler,
-    (RUN_UINTPTR_TYPE)Default_Handler,
-    (RUN_UINTPTR_TYPE)Default_Handler,
-    (RUN_UINTPTR_TYPE)Default_Handler,
-    (RUN_UINTPTR_TYPE)Default_Handler,
-    (RUN_UINTPTR_TYPE)Default_Handler,
-    (RUN_UINTPTR_TYPE)Default_Handler,
-    (RUN_UINTPTR_TYPE)Default_Handler,
-    (RUN_UINTPTR_TYPE)Default_Handler,
-    (RUN_UINTPTR_TYPE)Default_Handler,
-    (RUN_UINTPTR_TYPE)Default_Handler,
-    (RUN_UINTPTR_TYPE)Default_Handler,
-    (RUN_UINTPTR_TYPE)Default_Handler,
-    (RUN_UINTPTR_TYPE)Default_Handler,
-    (RUN_UINTPTR_TYPE)Default_Handler,
-    (RUN_UINTPTR_TYPE)Default_Handler,
-    (RUN_UINTPTR_TYPE)Default_Handler,
-    (RUN_UINTPTR_TYPE)Default_Handler,
-    (RUN_UINTPTR_TYPE)Default_Handler,
-    (RUN_UINTPTR_TYPE)Default_Handler,
-    (RUN_UINTPTR_TYPE)Default_Handler,
-    (RUN_UINTPTR_TYPE)Default_Handler,
-    (RUN_UINTPTR_TYPE)Default_Handler,
-    (RUN_UINTPTR_TYPE)Default_Handler,
-    (RUN_UINTPTR_TYPE)Default_Handler,
-    (RUN_UINTPTR_TYPE)Default_Handler,
-    (RUN_UINTPTR_TYPE)Default_Handler,
-    (RUN_UINTPTR_TYPE)Default_Handler,
-    (RUN_UINTPTR_TYPE)Default_Handler,
-    (RUN_UINTPTR_TYPE)Default_Handler,
-    (RUN_UINTPTR_TYPE)Default_Handler,
-    (RUN_UINTPTR_TYPE)Default_Handler,
-    (RUN_UINTPTR_TYPE)Default_Handler,
-    (RUN_UINTPTR_TYPE)Default_Handler,
-    (RUN_UINTPTR_TYPE)Default_Handler,
-    (RUN_UINTPTR_TYPE)Default_Handler
 };
 
+RUN_STATIC_ASSERT(RUN_ARRAY_COUNT(RunVectorTable) == 76U,
+                  "F103RB vector table must contain 16 core and 60 IRQ entries");
+
+/* Configures exception priorities and enables the DWT cycle counter. */
 RUN_VOID run_arch_early_init(RUN_VOID)
 {
     /* SHPR2/SHPR3 hold SVC, PendSV, and SysTick priorities in top bytes. */
@@ -217,6 +240,7 @@ RUN_VOID run_arch_early_init(RUN_VOID)
     RUN_DWT_CTRL |= RUN_DWT_CTRL_CYCCNTENA;
 }
 
+/* Builds the initial MSP/PSP-compatible register frame for a new thread. */
 RunStatus run_arch_context_initialize(RUN_CONST RunArchThreadContextConfig *runConfig,
                                       RUN_SIZE *runContextOut)
 {
@@ -244,24 +268,27 @@ RunStatus run_arch_context_initialize(RUN_CONST RunArchThreadContextConfig *runC
     runFrame[14] = (RUN_SIZE)(RUN_UINTPTR_TYPE)runConfig->runEntry;
     runFrame[15] = RUN_CORTEX_M_XPSR_THUMB;
     /*
-     * PendSV pre-decrements PSP before saving r4-r11 on the first switch.
-     * Point it at the hardware frame so the save lands in the reserved
-     * software-register slots immediately below that frame.
+     * PendSV always restores r4-r11 first and advances to the hardware frame.
+     * Point at the complete 16-word frame so a thread selected before it has
+     * ever been saved still starts at the correct register layout.
      */
-    *runContextOut = (RUN_SIZE)(RUN_UINTPTR_TYPE)(runFrame + 8);
+    *runContextOut = (RUN_SIZE)(RUN_UINTPTR_TYPE)runFrame;
     return RUN_STATUS_OK;
 }
 
+/* Releases no native context because Cortex-M thread frames live in stacks. */
 RUN_VOID run_arch_context_destroy(RUN_SIZE runContext)
 {
     (RUN_VOID)runContext;
 }
 
+/* Reports that Cortex-M context destruction is safe without a helper thread. */
 RUN_BOOL run_arch_context_requires_deferred_release(RUN_VOID)
 {
     return RUN_FALSE;
 }
 
+/* Saves PRIMASK and disables interrupts with a nesting-safe token. */
 RunCriticalState run_arch_enter_critical(RUN_VOID)
 {
     RUN_UINT_32 runState;
@@ -270,31 +297,41 @@ RunCriticalState run_arch_enter_critical(RUN_VOID)
     return runState;
 }
 
+/* Restores the exact PRIMASK state captured by the matching critical entry. */
 RUN_VOID run_arch_exit_critical(RunCriticalState runState)
 {
     __asm__ __volatile__("msr primask, %0" : : "r"(runState) : "memory");
 }
 
+/* Pends PendSV so the switch occurs at the lowest exception priority. */
 RUN_VOID run_arch_trigger_context_switch(RUN_VOID)
 {
     RUN_SCB_ICSR = RUN_SCB_ICSR_PENDSVSET;
     RUN_BARRIER();
 }
 
+/* Seeds PSP at the first hardware frame and pends the initial context switch. */
 RUN_VOID run_arch_start_scheduler(RUN_VOID)
 {
-    /* PendSV performs the MSP-to-PSP transition and restores the first thread. */
-    RUN_UINTPTR_TYPE runStackPointer = (RUN_UINTPTR_TYPE)RunKernelCurrent->runContext;
+    /*
+     * The saved context starts at r4-r11; PendSV expects PSP to name the
+     * hardware exception frame immediately above those software registers.
+     */
+    RUN_UINTPTR_TYPE runStackPointer =
+        (RUN_UINTPTR_TYPE)RunKernelCurrent->runContext +
+        RUN_CORTEX_M_HARDWARE_FRAME_WORDS * sizeof(RUN_SIZE);
     __asm__ __volatile__("msr psp, %0\n isb" : : "r"(runStackPointer) : "memory");
     RUN_SCB_ICSR = RUN_SCB_ICSR_PENDSVSET;
     RUN_BARRIER();
 }
 
+/* Waits for the next interrupt when no runnable thread exists. */
 RUN_VOID run_arch_idle(RUN_VOID)
 {
     __asm__ __volatile__("wfi");
 }
 
+/* Returns the active exception number for ISR-context validation. */
 RUN_UINT_32 run_arch_get_ipsr(RUN_VOID)
 {
     RUN_UINT_32 runValue;
@@ -302,12 +339,14 @@ RUN_UINT_32 run_arch_get_ipsr(RUN_VOID)
     return runValue;
 }
 
+/* Reads the free-running DWT cycle counter used by driver timeouts. */
 RUN_UINT_32 run_arch_get_cycle_count(RUN_VOID)
 {
     /* DWT wraps naturally; elapsed-time checks use unsigned subtraction. */
     return RUN_DWT_CYCCNT;
 }
 
+/* Enables one NVIC interrupt source by number. */
 RUN_VOID run_arch_enable_irq(RUN_UINT_32 runIrq)
 {
     /* NVIC uses one bit per IRQ packed into 32-bit set/clear registers. */
@@ -316,6 +355,7 @@ RUN_VOID run_arch_enable_irq(RUN_UINT_32 runIrq)
     runEnableArray[runIrq >> 5U] = 1UL << (runIrq & 31U);
 }
 
+/* Disables one NVIC interrupt source by number. */
 RUN_VOID run_arch_disable_irq(RUN_UINT_32 runIrq)
 {
     RUN_VOLATILE RUN_UINT_32 *runDisableArray =
@@ -323,6 +363,7 @@ RUN_VOID run_arch_disable_irq(RUN_UINT_32 runIrq)
     runDisableArray[runIrq >> 5U] = 1UL << (runIrq & 31U);
 }
 
+/* Programs one NVIC priority byte. */
 RUN_VOID run_arch_set_irq_priority(RUN_UINT_32 runIrq, RUN_UINT_8 runPriority)
 {
     RUN_VOLATILE RUN_UINT_8 *runPriorityArray =
@@ -330,6 +371,7 @@ RUN_VOID run_arch_set_irq_priority(RUN_UINT_32 runIrq, RUN_UINT_8 runPriority)
     runPriorityArray[runIrq] = runPriority;
 }
 
+/* Requests a Cortex-M system reset using the required AIRCR key. */
 RUN_ATTR_NORETURN RUN_VOID run_arch_system_reset(RUN_VOID)
 {
     /* AIRCR requires the VECTKEY pattern or writes are ignored. */

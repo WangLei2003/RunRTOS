@@ -23,7 +23,8 @@
       "toolchainFile": "${sourceDir}/cmake/arm-none-eabi-toolchain.cmake",
       "cacheVariables": {
         "RUNRTOS_BOARD": "f103rb",
-        "RUNRTOS_TARGET_MCU": "stm32f103rb"
+        "RUNRTOS_TARGET_MCU": "stm32f103rb",
+        "RUNRTOS_MEMORY_ARENA_BYTES": "12288"
       }
     },
     {

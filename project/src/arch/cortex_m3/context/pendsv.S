@@ -12,6 +12,7 @@
     .text
     .global PendSV_Handler
     .type PendSV_Handler, %function
+    @ Saves the outgoing software frame, selects a thread, and restores it.
 PendSV_Handler:
     @ Hardware has already stacked the caller-saved exception frame on PSP.
     mrs r0, psp

@@ -26,6 +26,7 @@ RUN_STATIC RunMemory *RunTestMemory;
 RUN_STATIC RunTestContext RunTests;
 RUN_STATIC RunSemaphore *RunTestKick;
 
+/* Writes a null-terminated test message to the host standard output. */
 RUN_VOID run_test_output(RUN_CONST RUN_CHAR *runText)
 {
     RUN_SIZE runLength = 0U;
@@ -43,6 +44,7 @@ RUN_VOID run_test_output(RUN_CONST RUN_CHAR *runText)
     }
 }
 
+/* Formats and prints one failed test expression. */
 RUN_VOID run_test_report_failure(RunTestContext *runContext,
                                  RUN_CONST RUN_CHAR *runExpression,
                                  RUN_UINT_32 runLine)
@@ -56,6 +58,7 @@ RUN_VOID run_test_report_failure(RunTestContext *runContext,
     run_test_output(runText);
 }
 
+/* Records one assertion result and reports failures without aborting the suite. */
 RUN_VOID run_test_check(RunTestContext *runContext,
                         RUN_BOOL runCondition,
                         RUN_CONST RUN_CHAR *runExpression,
@@ -68,6 +71,7 @@ RUN_VOID run_test_check(RunTestContext *runContext,
     }
 }
 
+/* Prints the standard banner for a host test suite. */
 RUN_VOID run_test_suite_begin(RunTestContext *runContext,
                               RUN_CONST RUN_CHAR *runSuite)
 {
@@ -77,6 +81,7 @@ RUN_VOID run_test_suite_begin(RunTestContext *runContext,
     run_test_output("\r\n");
 }
 
+/* Advances the production tick source from a low-priority host thread. */
 RUN_STATIC RUN_VOID run_test_ticker(RUN_VOID *runArgument)
 {
     (RUN_VOID)runArgument;
@@ -87,6 +92,7 @@ RUN_STATIC RUN_VOID run_test_ticker(RUN_VOID *runArgument)
     }
 }
 
+/* Runs every host suite and exits with their aggregate failure status. */
 RUN_ATTR_NORETURN RUN_STATIC RUN_VOID run_test_runner(RUN_VOID *runArgument)
 {
     RUN_UINT_32 runFailures;
@@ -111,6 +117,7 @@ RUN_ATTR_NORETURN RUN_STATIC RUN_VOID run_test_runner(RUN_VOID *runArgument)
     ExitProcess((runFailures == 0U) ? 0U : 1U);
 }
 
+/* Initializes host kernel services and launches the test scheduler. */
 RUN_INT_32 main(RUN_VOID)
 {
     RunThreadConfig runTickerConfig = {

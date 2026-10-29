@@ -17,6 +17,7 @@ RUN_STATIC RUN_CHAR RunKernelTrace[32];
 RUN_STATIC RUN_UINT_32 RunKernelTraceLength;
 RUN_STATIC RunSemaphore *RunKernelDone;
 
+/* Appends one scheduler ordering marker to the shared test trace. */
 RUN_STATIC RUN_VOID run_kernel_trace(RUN_CHAR runValue)
 {
     if (RunKernelTraceLength < sizeof(RunKernelTrace))
@@ -25,12 +26,14 @@ RUN_STATIC RUN_VOID run_kernel_trace(RUN_CHAR runValue)
     }
 }
 
+/* Emits a marker that reveals preemption by a higher-priority thread. */
 RUN_STATIC RUN_VOID run_kernel_priority_worker(RUN_VOID *runArgument)
 {
     (RUN_VOID)runArgument;
     run_kernel_trace('H');
 }
 
+/* Emits repeated markers to exercise equal-priority round-robin scheduling. */
 RUN_STATIC RUN_VOID run_kernel_round_worker(RUN_VOID *runArgument)
 {
     RUN_CHAR runValue = *(RUN_CONST RUN_CHAR *)runArgument;
@@ -42,6 +45,7 @@ RUN_STATIC RUN_VOID run_kernel_round_worker(RUN_VOID *runArgument)
     (RUN_VOID)run_semaphore_give(RunKernelDone);
 }
 
+/* Burns one time slice and records a tick-driven rotation marker. */
 RUN_STATIC RUN_VOID run_kernel_slice_worker(RUN_VOID *runArgument)
 {
     RUN_CHAR runValue = *(RUN_CONST RUN_CHAR *)runArgument;
@@ -54,6 +58,7 @@ RUN_STATIC RUN_VOID run_kernel_slice_worker(RUN_VOID *runArgument)
     (RUN_VOID)run_semaphore_give(RunKernelDone);
 }
 
+/* Waits until the test suite resumes the worker thread. */
 RUN_STATIC RUN_VOID run_kernel_resume_worker(RUN_VOID *runArgument)
 {
     RUN_UINT_32 *runCounter = (RUN_UINT_32 *)runArgument;
@@ -61,17 +66,20 @@ RUN_STATIC RUN_VOID run_kernel_resume_worker(RUN_VOID *runArgument)
     (RUN_VOID)run_semaphore_give(RunKernelDone);
 }
 
+/* Provides a thread that immediately returns to test lifecycle cleanup. */
 RUN_STATIC RUN_VOID run_kernel_noop_worker(RUN_VOID *runArgument)
 {
     (RUN_VOID)runArgument;
 }
 
+/* Holds forever to test deletion of a blocked thread. */
 RUN_STATIC RUN_VOID run_kernel_forever_worker(RUN_VOID *runArgument)
 {
     RunSemaphore *runSemaphore = (RunSemaphore *)runArgument;
     (RUN_VOID)run_semaphore_take(runSemaphore, RUN_TIME_FOREVER);
 }
 
+/* Exercises scheduler priority, slicing, sleep, suspend, and deletion behavior. */
 RUN_VOID run_test_kernel_suite(RunTestContext *runContext,
                                RunSemaphore *runKickSemaphore)
 {

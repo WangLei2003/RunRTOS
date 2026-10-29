@@ -9,6 +9,7 @@
  */
 #include "runrtos/core/run_types.h"
 
+/* Keeps the final executable target anchored to application-owned code. */
 RUN_VOID run_firmware_anchor(RUN_VOID)
 {
 }

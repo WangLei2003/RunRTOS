@@ -15,6 +15,9 @@ target_link_libraries(runrtos_demo PUBLIC
     runrtos_bsp_f103rb
     runrtos_kernel
 )
+if(RUNRTOS_SHELL)
+    target_link_libraries(runrtos_demo PUBLIC runrtos_shell)
+endif()
 runrtos_apply_c_warnings(runrtos_demo)
 
 add_executable(runrtos_firmware
@@ -41,6 +44,13 @@ target_link_libraries(runrtos_firmware PRIVATE
     -lgcc
     -Wl,--end-group
 )
+if(RUNRTOS_SHELL)
+    target_link_libraries(runrtos_firmware PRIVATE
+        runrtos_shell
+        runrtos_selftest
+        runrtos_stress
+    )
+endif()
 runrtos_apply_c_warnings(runrtos_firmware)
 
 add_custom_command(TARGET runrtos_firmware POST_BUILD

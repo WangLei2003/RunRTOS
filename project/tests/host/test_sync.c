@@ -51,6 +51,7 @@ typedef RUN_STRUCT RunSyncTimerState
     RUN_BOOL runDeleteSelf;
 } RunSyncTimerState;
 
+/* Appends one synchronization ordering marker to the test trace. */
 RUN_STATIC RUN_VOID run_sync_trace(RUN_CHAR runValue)
 {
     if (RunMutexTraceLength < sizeof(RunMutexTrace))
@@ -59,6 +60,7 @@ RUN_STATIC RUN_VOID run_sync_trace(RUN_CHAR runValue)
     }
 }
 
+/* Waits on a semaphore to exercise timeout and wakeup behavior. */
 RUN_STATIC RUN_VOID run_sync_semaphore_worker(RUN_VOID *runArgument)
 {
     RunSyncSemaphoreWorker *runWorker =
@@ -68,6 +70,7 @@ RUN_STATIC RUN_VOID run_sync_semaphore_worker(RUN_VOID *runArgument)
     (RUN_VOID)run_semaphore_give(RunSyncDone);
 }
 
+/* Produces queue values for the producer-consumer test. */
 RUN_STATIC RUN_VOID run_sync_queue_worker(RUN_VOID *runArgument)
 {
     RunSyncQueueWorker *runWorker = (RunSyncQueueWorker *)runArgument;
@@ -76,6 +79,7 @@ RUN_STATIC RUN_VOID run_sync_queue_worker(RUN_VOID *runArgument)
     (RUN_VOID)run_semaphore_give(RunSyncDone);
 }
 
+/* Waits for event bits configured by the event-group tests. */
 RUN_STATIC RUN_VOID run_sync_event_worker(RUN_VOID *runArgument)
 {
     RunSyncEventWorker *runWorker = (RunSyncEventWorker *)runArgument;
@@ -86,6 +90,7 @@ RUN_STATIC RUN_VOID run_sync_event_worker(RUN_VOID *runArgument)
     (RUN_VOID)run_semaphore_give(RunSyncDone);
 }
 
+/* Holds a mutex to expose lower-priority ownership in inheritance tests. */
 RUN_STATIC RUN_VOID run_sync_mutex_low(RUN_VOID *runArgument)
 {
     RunSyncMutexWorker *runWorker = (RunSyncMutexWorker *)runArgument;
@@ -98,6 +103,7 @@ RUN_STATIC RUN_VOID run_sync_mutex_low(RUN_VOID *runArgument)
     (RUN_VOID)run_semaphore_give(RunSyncDone);
 }
 
+/* Emits a priority marker while a lower-priority owner awaits release. */
 RUN_STATIC RUN_VOID run_sync_mutex_medium(RUN_VOID *runArgument)
 {
     RunSyncMutexWorker *runWorker = (RunSyncMutexWorker *)runArgument;
@@ -111,6 +117,7 @@ RUN_STATIC RUN_VOID run_sync_mutex_medium(RUN_VOID *runArgument)
     (RUN_VOID)run_semaphore_give(RunSyncDone);
 }
 
+/* Mutates timer lifecycle state from inside its own service callback. */
 RUN_STATIC RUN_VOID run_sync_timer_callback(RunTimer *runTimer,
                                             RUN_VOID *runArgument)
 {
@@ -139,6 +146,7 @@ RUN_STATIC RUN_VOID run_sync_timer_callback(RunTimer *runTimer,
     }
 }
 
+/* Exercises IPC, mutex priority inheritance, and timer lifecycle rules. */
 RUN_VOID run_test_sync_suite(RunTestContext *runContext,
                              RunSemaphore *runKickSemaphore)
 {
@@ -302,6 +310,13 @@ RUN_VOID run_test_sync_suite(RunTestContext *runContext,
     runTimerState.runStopAfter = 1U;
     runTimerState.runStartAgain = 0U;
     runTimerState.runDeleteSelf = RUN_FALSE;
+    RUN_TEST_STATUS(runContext,
+        run_timer_create(run_sync_timer_callback, &runTimerState, RUN_FALSE,
+                         0U, &runTimer), RUN_STATUS_OK);
+    RUN_TEST_STATUS(runContext, run_timer_delete(runTimer), RUN_STATUS_OK);
+    RUN_TEST_STATUS(runContext,
+        run_timer_create(run_sync_timer_callback, &runTimerState, RUN_TRUE,
+                         0U, &runTimer), RUN_STATUS_INVALID_ARGUMENT);
     RUN_TEST_STATUS(runContext,
         run_timer_create(run_sync_timer_callback, &runTimerState, RUN_TRUE,
                          1U, &runTimer), RUN_STATUS_OK);

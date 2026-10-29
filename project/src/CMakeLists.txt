@@ -18,6 +18,7 @@ add_subdirectory(drivers)
 
 if(NOT RUNRTOS_HOST_TESTS)
     add_subdirectory(bsp/f103rb)
+    add_subdirectory(components)
     add_subdirectory(applications/demo)
 endif()
 

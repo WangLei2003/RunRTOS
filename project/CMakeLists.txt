@@ -18,7 +18,7 @@ option(RUNRTOS_MINIMAL "Disable optional diagnostics" OFF)
 option(RUNRTOS_SHELL "Enable the RunRTOS shell" ON)
 set(RUNRTOS_TICK_HZ 1000 CACHE STRING "System tick frequency")
 set(RUNRTOS_PRIORITY_COUNT 32 CACHE STRING "Number of scheduler priorities")
-set(RUNRTOS_MEMORY_ARENA_BYTES 8192 CACHE STRING "Runtime allocator arena size")
+set(RUNRTOS_MEMORY_ARENA_BYTES 12288 CACHE STRING "Runtime allocator arena size")
 set(RUNRTOS_MAIN_STACK_BYTES 2048 CACHE STRING "Interrupt/main stack size")
 set(RUN_CONFIG_ASSERT_ENABLED 1)
 
