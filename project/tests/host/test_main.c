@@ -1,117 +1,165 @@
 /*
  * SPDX-License-Identifier: Apache-2.0
- * RunRTOS - host runtime smoke tests
+ * RunRTOS - host test process and production scheduler bootstrap
  *
  * Layer: tests/host
- * Purpose: Verify allocator alignment/merge integrity and owned-string formatting.
- * Dependencies: RunRTOS runtime public APIs and CTest process status.
- * Constraint: Tests use no external test framework; the first failing group is
- *             identified by its nonzero process exit code.
+ * Purpose: Initialize the allocator/kernel and run all suites on host fibers.
+ * Dependencies: Windows console output, RunRTOS public APIs, and test suites.
+ * Constraint: The ticker is a host-only diagnostic aid; it drives production
+ *             tick code but never replaces architecture context handling.
  */
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+
+#include "test_harness.h"
+#include "runrtos/core/run_config.h"
+#include "runrtos/kernel/run_sync.h"
 #include "runrtos/runtime/run_format.h"
 #include "runrtos/runtime/run_memory.h"
-#include "runrtos/runtime/run_string.h"
 
-RUN_STATIC RUN_INT_32 run_test_memory(void)
+#define RUN_TEST_ARENA_BYTES (512U * 1024U)
+#define RUN_TEST_PRIORITY 20U
+#define RUN_TEST_TICKER_PRIORITY 1U
+
+RUN_STATIC RUN_ATTR_ALIGNED(8) RUN_UINT_8 RunTestArena[RUN_TEST_ARENA_BYTES];
+RUN_STATIC RunMemory *RunTestMemory;
+RUN_STATIC RunTestContext RunTests;
+RUN_STATIC RunSemaphore *RunTestKick;
+
+RUN_VOID run_test_output(RUN_CONST RUN_CHAR *runText)
 {
-    RUN_ATTR_ALIGNED(8) RUN_UINT_8 runArena[1024];
-    RunMemory *runMemory = RUN_NULL;
-    RUN_VOID *runFirst = RUN_NULL;
-    RUN_VOID *runSecond = RUN_NULL;
-    RunMemoryStats runStats;
-
-    if (run_memory_init(&runMemory, runArena, sizeof(runArena)) != RUN_STATUS_OK)
+    RUN_SIZE runLength = 0U;
+    DWORD runWritten = 0U;
+    RUN_CONST RUN_CHAR *runCursor = runText;
+    while ((runCursor != RUN_NULL) && (*runCursor != '\0'))
     {
-        return 1;
+        runLength++;
+        runCursor++;
     }
-    if (run_memory_allocate(runMemory, 24U, RUN_MEMORY_ALIGNMENT, &runFirst) !=
-        RUN_STATUS_OK)
+    if (runLength != 0U)
     {
-        return 2;
+        (RUN_VOID)WriteFile(GetStdHandle(STD_OUTPUT_HANDLE), runText,
+                            (DWORD)runLength, &runWritten, RUN_NULL);
     }
-    if (((RUN_UINTPTR_TYPE)runFirst & (RUN_MEMORY_ALIGNMENT - 1U)) != 0U)
-    {
-        return 3;
-    }
-    if (run_memory_allocate(runMemory, 64U, RUN_MEMORY_ALIGNMENT, &runSecond) !=
-        RUN_STATUS_OK)
-    {
-        return 4;
-    }
-    if (run_memory_release(runMemory, runFirst) != RUN_STATUS_OK)
-    {
-        return 5;
-    }
-    if (run_memory_release(runMemory, runSecond) != RUN_STATUS_OK)
-    {
-        return 6;
-    }
-    if (run_memory_check(runMemory) != RUN_STATUS_OK)
-    {
-        return 7;
-    }
-    run_memory_get_stats(runMemory, &runStats);
-    if ((runStats.runUsed != 0U) || (runStats.runFailureCount != 0U))
-    {
-        return 8;
-    }
-    return 0;
 }
 
-RUN_STATIC RUN_INT_32 run_test_strings(void)
+RUN_VOID run_test_report_failure(RunTestContext *runContext,
+                                 RUN_CONST RUN_CHAR *runExpression,
+                                 RUN_UINT_32 runLine)
 {
-    RUN_ATTR_ALIGNED(8) RUN_UINT_8 runArena[1024];
-    RunMemory *runMemory = RUN_NULL;
-    RunString runString;
-    RunStringView runView;
-    RUN_CHAR runBuffer[32];
+    RUN_CHAR runText[192];
     RUN_SIZE runLength = 0U;
+    runContext->runFailures++;
+    (RUN_VOID)run_format_buffer(runText, sizeof(runText), &runLength,
+                                "FAIL %s:%u: %s\r\n",
+                                runContext->runSuite, runLine, runExpression);
+    run_test_output(runText);
+}
 
-    if (run_memory_init(&runMemory, runArena, sizeof(runArena)) != RUN_STATUS_OK)
+RUN_VOID run_test_check(RunTestContext *runContext,
+                        RUN_BOOL runCondition,
+                        RUN_CONST RUN_CHAR *runExpression,
+                        RUN_UINT_32 runLine)
+{
+    runContext->runChecks++;
+    if (!runCondition)
     {
-        return 10;
+        run_test_report_failure(runContext, runExpression, runLine);
     }
-    if (run_string_from_cstr(runMemory, "Run", &runString) != RUN_STATUS_OK)
+}
+
+RUN_VOID run_test_suite_begin(RunTestContext *runContext,
+                              RUN_CONST RUN_CHAR *runSuite)
+{
+    runContext->runSuite = runSuite;
+    run_test_output("[ RUN      ] ");
+    run_test_output(runSuite);
+    run_test_output("\r\n");
+}
+
+RUN_STATIC RUN_VOID run_test_ticker(RUN_VOID *runArgument)
+{
+    (RUN_VOID)runArgument;
+    for (;;)
     {
-        return 11;
+        run_kernel_tick_from_isr();
+        run_scheduler_yield();
     }
-    runView.runData = "RTOS";
-    runView.runLength = 4U;
-    if (run_string_append_view(&runString, runView) != RUN_STATUS_OK)
-    {
-        return 12;
-    }
-    runView = run_string_as_view(&runString);
-    if (!run_string_equal_view(runView, (RunStringView)RUN_STRING_VIEW("RunRTOS")))
-    {
-        return 13;
-    }
-    if (run_format_buffer(runBuffer, sizeof(runBuffer), &runLength, "%s:%u",
-                          runString.runData, 7U) != RUN_STATUS_OK)
-    {
-        return 14;
-    }
-    if (!run_string_equal_view(
-            (RunStringView){ runBuffer, runLength },
-            (RunStringView)RUN_STRING_VIEW("RunRTOS:7")))
-    {
-        return 15;
-    }
-    run_string_deinit(&runString);
-    if (run_memory_check(runMemory) != RUN_STATUS_OK)
-    {
-        return 16;
-    }
-    return 0;
+}
+
+RUN_ATTR_NORETURN RUN_STATIC RUN_VOID run_test_runner(RUN_VOID *runArgument)
+{
+    RUN_UINT_32 runFailures;
+    RUN_UINT_32 runChecks;
+    RUN_CHAR runText[160];
+    RUN_SIZE runLength = 0U;
+    (RUN_VOID)runArgument;
+
+    run_test_runtime_suite(&RunTests);
+    run_test_kernel_suite(&RunTests, RunTestKick);
+    run_test_sync_suite(&RunTests, RunTestKick);
+    run_test_driver_suite(&RunTests);
+
+    runFailures = RunTests.runFailures;
+    runChecks = RunTests.runChecks;
+    (RUN_VOID)run_format_buffer(runText, sizeof(runText), &runLength,
+                                "SUMMARY checks=%u failures=%u\r\n",
+                                runChecks, runFailures);
+    run_test_output(runText);
+    run_test_output((runFailures == 0U) ? "PASS runrtos host tests\r\n" :
+                                         "FAIL runrtos host tests\r\n");
+    ExitProcess((runFailures == 0U) ? 0U : 1U);
 }
 
 RUN_INT_32 main(RUN_VOID)
 {
-    RUN_INT_32 runResult = run_test_memory();
-    if (runResult != 0)
-    {
-        return runResult;
-    }
-    return run_test_strings();
-}
+    RunThreadConfig runTickerConfig = {
+        "host-ticker", run_test_ticker, RUN_NULL, 512U,
+        RUN_TEST_TICKER_PRIORITY, 1U
+    };
+    RunThreadConfig runRunnerConfig = {
+        "host-runner", run_test_runner, RUN_NULL, 8192U,
+        RUN_TEST_PRIORITY, 1U
+    };
+    RunThread *runThread = RUN_NULL;
+    RunStatus runStatus;
 
+    RunTests.runSuite = "bootstrap";
+    runStatus = run_memory_init(&RunTestMemory, RunTestArena, sizeof(RunTestArena));
+    if (runStatus != RUN_STATUS_OK)
+    {
+        run_test_output("FAIL memory init\r\n");
+        return 10;
+    }
+    runStatus = run_kernel_init(RunTestMemory);
+    if (runStatus != RUN_STATUS_OK)
+    {
+        run_test_output("FAIL kernel init\r\n");
+        return 11;
+    }
+    runStatus = run_timer_system_init();
+    if (runStatus != RUN_STATUS_OK)
+    {
+        run_test_output("FAIL timer init\r\n");
+        return 12;
+    }
+    runStatus = run_semaphore_create(0U, 1U, &RunTestKick);
+    if (runStatus != RUN_STATUS_OK)
+    {
+        run_test_output("FAIL kick semaphore\r\n");
+        return 13;
+    }
+    runStatus = run_thread_create(&runTickerConfig, &runThread);
+    if (runStatus != RUN_STATUS_OK)
+    {
+        run_test_output("FAIL ticker create\r\n");
+        return 14;
+    }
+    runStatus = run_thread_create(&runRunnerConfig, &runThread);
+    if (runStatus != RUN_STATUS_OK)
+    {
+        run_test_output("FAIL runner create\r\n");
+        return 15;
+    }
+    run_scheduler_start();
+}

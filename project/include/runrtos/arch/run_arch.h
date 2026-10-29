@@ -15,8 +15,27 @@
 
 typedef RUN_UINT_32 RunCriticalState;
 
+/*
+ * Architecture context initialization is consumed by the kernel. runEntry runs
+ * with runEntryArgument and is expected to terminate through runReturn.
+ */
+typedef RUN_STRUCT RunArchThreadContextConfig
+{
+    RUN_VOID *runStackBase;
+    RUN_SIZE runStackSize;
+    RUN_VOID (*runEntry)(RUN_VOID *runArgument);
+    RUN_VOID *runEntryArgument;
+    RUN_VOID (*runReturn)(RUN_VOID);
+} RunArchThreadContextConfig;
+
 /* Configures fault priorities, PendSV, SysTick, and optional cycle counter. */
 RUN_VOID run_arch_early_init(RUN_VOID);
+RunStatus run_arch_context_initialize(RUN_CONST RunArchThreadContextConfig *runConfig,
+                                      RUN_SIZE *runContextOut);
+/* Releases architecture-owned context storage after the thread is unreachable. */
+RUN_VOID run_arch_context_destroy(RUN_SIZE runContext);
+/* Some ports cannot recycle their currently executing context until after switch. */
+RUN_BOOL run_arch_context_requires_deferred_release(RUN_VOID);
 
 /* The returned token must be passed unchanged to the matching exit function. */
 RunCriticalState run_arch_enter_critical(RUN_VOID);

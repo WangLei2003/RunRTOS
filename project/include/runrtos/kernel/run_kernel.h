@@ -44,6 +44,16 @@ typedef RUN_STRUCT RunThreadStats
     RUN_UINT_64 runContextSwitches;
 } RunThreadStats;
 
+/*
+ * Stable snapshot for diagnostics. The handle remains kernel-owned and may
+ * become stale after deletion; do not dereference it directly.
+ */
+typedef RUN_STRUCT RunThreadInfo
+{
+    RunThread *runThread;
+    RunThreadStats runStats;
+} RunThreadInfo;
+
 typedef RUN_STRUCT RunKernelStats
 {
     RUN_UINT_64 runTicks;
@@ -100,6 +110,14 @@ RUN_BOOL run_kernel_is_in_isr(RUN_VOID);
 /* Statistics are snapshots; output pointers must be non-null. */
 RUN_VOID run_kernel_get_stats(RunKernelStats *runStats);
 RunStatus run_thread_get_stats(RunThread *runThread, RunThreadStats *runStats);
+
+/*
+ * Enumerates threads in scheduler order while taking a consistent snapshot.
+ * runIndex is zero based. The order is private and may change after scheduling.
+ * This call is safe in thread context and returns INVALID_ARGUMENT for a stale
+ * index or null output.
+ */
+RunStatus run_thread_get_info(RUN_SIZE runIndex, RunThreadInfo *runInfoOut);
 
 /*
  * Scheduler locks nest. Preemption remains inhibited until the matching unlock

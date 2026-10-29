@@ -11,7 +11,7 @@
 #include "../internal/run_kernel_internal.h"
 
 #define RUN_THREAD_STACK_FILL 0xA5U
-#define RUN_THREAD_INITIAL_FRAME_WORDS 16U
+#define RUN_THREAD_MIN_STACK_BYTES 128U
 
 /* Kernel metadata is private; public headers expose only RunThread pointers. */
 RunKernelState RunKernel;
@@ -237,6 +237,33 @@ RUN_VOID run_kernel_ready_thread(RunThread *runThread, RunStatus runWakeStatus)
     run_kernel_update_switch_request();
 }
 
+RUN_VOID run_kernel_thread_set_priority(RunThread *runThread,
+                                        RUN_UINT_8 runPriority)
+{
+    RUN_INVARIANT(runThread != RUN_NULL);
+    RUN_INVARIANT(runPriority < RUN_CONFIG_PRIORITY_COUNT);
+    if (runThread->runPriority == runPriority)
+    {
+        return;
+    }
+    /*
+     * A ready thread is indexed by its current priority. Moving it requires
+     * unlinking from the old bucket before changing the index, then inserting
+     * into the new FIFO tail so priority inheritance cannot corrupt the bitmap.
+     */
+    if (runThread->runState == RUN_THREAD_READY)
+    {
+        run_kernel_ready_remove(runThread);
+        runThread->runPriority = runPriority;
+        run_kernel_ready_insert(runThread);
+    }
+    else
+    {
+        runThread->runPriority = runPriority;
+    }
+    run_kernel_update_switch_request();
+}
+
 RunStatus run_kernel_block_current(RunTimeMs runTimeout,
                                    RunWaitList *runWaitList,
                                    RUN_UINT_32 *runWakeStatusOut)
@@ -314,32 +341,6 @@ RUN_STATIC RUN_VOID run_thread_exit_stub(RUN_VOID)
     run_thread_exit();
 }
 
-RUN_STATIC RUN_VOID run_thread_initialize_stack(RunThread *runThread)
-{
-    RUN_SIZE *runTop;
-    RUN_SIZE *runFrame;
-
-    runTop = (RUN_SIZE *)(RUN_VOID *)(runThread->runStackBase + runThread->runStackSize);
-    runTop = (RUN_SIZE *)(RUN_VOID *)((RUN_SIZE)runTop & ~((RUN_SIZE)7U));
-    /*
-     * Reserve r4-r11 (8 words), then the hardware r0-r3/r12/LR/PC/xPSR frame
-     * (8 words). Keeping this layout in one place avoids port/kernel drift.
-     */
-    runFrame = runTop - RUN_THREAD_INITIAL_FRAME_WORDS;
-    run_memory_set(runFrame, 0, RUN_THREAD_INITIAL_FRAME_WORDS * sizeof(RUN_SIZE));
-    /* Exception frame after the software-saved r4-r11 register block. */
-    runFrame[8] = (RUN_SIZE)(RUN_UINTPTR_TYPE)runThread;
-    runFrame[13] = (RUN_SIZE)(RUN_UINTPTR_TYPE)run_thread_exit_stub;
-    runFrame[14] = (RUN_SIZE)(RUN_UINTPTR_TYPE)run_thread_trampoline;
-    runFrame[15] = 0x01000000U;
-    /*
-     * PendSV pre-decrements PSP before saving r4-r11 on the first switch.
-     * Point it at the hardware frame so the save lands in the reserved
-     * software-register slots immediately below that frame.
-     */
-    runThread->runStackPointer = (RUN_SIZE)(RUN_UINTPTR_TYPE)(runFrame + 8);
-}
-
 RunStatus run_kernel_create_internal(RUN_CONST RunThreadConfig *runConfig,
                                      RunThread **runThreadOut)
 {
@@ -347,11 +348,13 @@ RunStatus run_kernel_create_internal(RUN_CONST RunThreadConfig *runConfig,
     RUN_VOID *runObject;
     RUN_VOID *runStack;
     RunStatus runStatus;
+    RunArchThreadContextConfig runContextConfig;
+    RUN_SIZE runContext;
 
     if ((runConfig == RUN_NULL) || (runThreadOut == RUN_NULL) ||
         (runConfig->runEntry == RUN_NULL) ||
         (runConfig->runPriority >= RUN_CONFIG_PRIORITY_COUNT) ||
-        (runConfig->runStackSize < sizeof(RUN_SIZE) * RUN_THREAD_INITIAL_FRAME_WORDS))
+        (runConfig->runStackSize < RUN_THREAD_MIN_STACK_BYTES))
     {
         return RUN_STATUS_INVALID_ARGUMENT;
     }
@@ -387,7 +390,19 @@ RunStatus run_kernel_create_internal(RUN_CONST RunThreadConfig *runConfig,
     runThread->runTimeSliceRemaining = runThread->runTimeSlice;
     runThread->runState = RUN_THREAD_READY;
     run_memory_set(runStack, RUN_THREAD_STACK_FILL, runConfig->runStackSize);
-    run_thread_initialize_stack(runThread);
+    runContextConfig.runStackBase = runStack;
+    runContextConfig.runStackSize = runConfig->runStackSize;
+    runContextConfig.runEntry = (RUN_VOID (*)(RUN_VOID *))run_thread_trampoline;
+    runContextConfig.runEntryArgument = runThread;
+    runContextConfig.runReturn = run_thread_exit_stub;
+    runStatus = run_arch_context_initialize(&runContextConfig, &runContext);
+    if (runStatus != RUN_STATUS_OK)
+    {
+        (RUN_VOID)run_memory_release(RunKernel.runMemory, runStack);
+        (RUN_VOID)run_memory_release(RunKernel.runMemory, runObject);
+        return runStatus;
+    }
+    runThread->runContext = runContext;
     runThread->runWakeStatus = (RUN_UINT_32)RUN_STATUS_OK;
 
     runThread->runAllNext = RunKernel.runThreads;
@@ -457,6 +472,7 @@ RUN_STATIC RUN_VOID run_thread_free(RunThread *runThread)
     RunMemory *runMemory = runThread->runMemory;
     RUN_UINT_8 *runStack = runThread->runStackBase;
     run_kernel_remove_all_list(runThread);
+    run_arch_context_destroy(runThread->runContext);
     (RUN_VOID)run_memory_release(runMemory, runThread);
     if (runStack != RUN_NULL)
     {
@@ -510,6 +526,12 @@ RUN_VOID run_kernel_switch_prepare(RUN_VOID)
     RunThread *runOld = RunKernel.runCurrent;
     RunThread *runNext;
 
+    if (RunKernel.runReap != RUN_NULL)
+    {
+        RunThread *runReap = RunKernel.runReap;
+        RunKernel.runReap = RUN_NULL;
+        run_thread_free(runReap);
+    }
     RunKernel.runSwitchRequested = RUN_FALSE;
     if (runOld != RUN_NULL)
     {
@@ -540,7 +562,14 @@ RUN_VOID run_kernel_switch_prepare(RUN_VOID)
     if ((runOld != RUN_NULL) && (runOld != runNext) &&
         (runOld->runState == RUN_THREAD_TERMINATED))
     {
-        run_thread_free(runOld);
+        if (run_arch_context_requires_deferred_release())
+        {
+            RunKernel.runReap = runOld;
+        }
+        else
+        {
+            run_thread_free(runOld);
+        }
     }
 }
 
@@ -785,6 +814,34 @@ RunStatus run_thread_get_stats(RunThread *runThread, RunThreadStats *runStats)
     runStats->runStackHighWater = runThread->runStackSize - runUsed;
     runStats->runContextSwitches = runThread->runContextSwitches;
     return RUN_STATUS_OK;
+}
+
+RunStatus run_thread_get_info(RUN_SIZE runIndex, RunThreadInfo *runInfoOut)
+{
+    RunThread *runThread;
+    RunStatus runStatus = RUN_STATUS_INVALID_ARGUMENT;
+    RunCriticalState runState;
+
+    if ((runInfoOut == RUN_NULL) ||
+        (run_kernel_api_enter(RUN_FALSE) != RUN_STATUS_OK))
+    {
+        return RUN_STATUS_INVALID_ARGUMENT;
+    }
+
+    runState = run_arch_enter_critical();
+    runThread = RunKernel.runThreads;
+    while ((runThread != RUN_NULL) && (runIndex > 0U))
+    {
+        runThread = runThread->runAllNext;
+        runIndex--;
+    }
+    if (runThread != RUN_NULL)
+    {
+        runInfoOut->runThread = runThread;
+        runStatus = run_thread_get_stats(runThread, &runInfoOut->runStats);
+    }
+    run_arch_exit_critical(runState);
+    return runStatus;
 }
 
 RUN_VOID run_scheduler_lock(RUN_VOID)

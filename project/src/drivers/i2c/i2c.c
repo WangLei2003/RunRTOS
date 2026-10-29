@@ -29,3 +29,27 @@ RunStatus run_i2c_transaction(RunDevice *runDevice,
                                          runReadLength, runTimeoutMs);
 }
 
+RunStatus run_i2c_transaction_async(RunDevice *runDevice,
+                                    RUN_UINT_16 runAddress,
+                                    RUN_CONST RUN_UINT_8 *runWriteData,
+                                    RUN_SIZE runWriteLength,
+                                    RUN_UINT_8 *runReadData,
+                                    RUN_SIZE runReadLength,
+                                    RunI2cCompletion runCompletion,
+                                    RUN_VOID *runArgument)
+{
+    RUN_CONST RunI2cOperations *runOperations = run_i2c_ops(runDevice);
+    if ((runOperations == RUN_NULL) ||
+        (runOperations->runTransactionAsync == RUN_NULL) ||
+        ((runWriteData == RUN_NULL) && (runWriteLength != 0U)) ||
+        ((runReadData == RUN_NULL) && (runReadLength != 0U)) ||
+        (runCompletion == RUN_NULL))
+    {
+        return RUN_STATUS_INVALID_ARGUMENT;
+    }
+    return runOperations->runTransactionAsync(runDevice, runAddress,
+                                              runWriteData, runWriteLength,
+                                              runReadData, runReadLength,
+                                              runCompletion, runArgument);
+}
+

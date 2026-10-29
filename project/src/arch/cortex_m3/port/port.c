@@ -27,6 +27,8 @@
 #define RUN_SCB_AIRCR_VECTKEY (0x05FAUL << 16U)
 #define RUN_DEMCR_TRCENA (1UL << 24U)
 #define RUN_DWT_CTRL_CYCCNTENA (1UL << 0U)
+#define RUN_CORTEX_M_INITIAL_FRAME_WORDS 16U
+#define RUN_CORTEX_M_XPSR_THUMB (1UL << 24U)
 
 RUN_EXTERN RUN_UINT_32 _estack;
 
@@ -215,6 +217,51 @@ RUN_VOID run_arch_early_init(RUN_VOID)
     RUN_DWT_CTRL |= RUN_DWT_CTRL_CYCCNTENA;
 }
 
+RunStatus run_arch_context_initialize(RUN_CONST RunArchThreadContextConfig *runConfig,
+                                      RUN_SIZE *runContextOut)
+{
+    RUN_SIZE *runTop;
+    RUN_SIZE *runFrame;
+    if ((runConfig == RUN_NULL) || (runContextOut == RUN_NULL) ||
+        (runConfig->runStackBase == RUN_NULL) || (runConfig->runEntry == RUN_NULL) ||
+        (runConfig->runReturn == RUN_NULL) ||
+        (runConfig->runStackSize <
+         sizeof(RUN_SIZE) * RUN_CORTEX_M_INITIAL_FRAME_WORDS))
+    {
+        return RUN_STATUS_INVALID_ARGUMENT;
+    }
+    runTop = (RUN_SIZE *)(RUN_VOID *)((RUN_UINT_8 *)runConfig->runStackBase +
+                                      runConfig->runStackSize);
+    runTop = (RUN_SIZE *)(RUN_VOID *)((RUN_SIZE)runTop & ~((RUN_SIZE)7U));
+    /*
+     * Reserve r4-r11 (8 words), then the hardware r0-r3/r12/LR/PC/xPSR frame
+     * (8 words). This layout is private to the Cortex-M port.
+     */
+    runFrame = runTop - RUN_CORTEX_M_INITIAL_FRAME_WORDS;
+    run_memory_set(runFrame, 0, RUN_CORTEX_M_INITIAL_FRAME_WORDS * sizeof(RUN_SIZE));
+    runFrame[8] = (RUN_SIZE)(RUN_UINTPTR_TYPE)runConfig->runEntryArgument;
+    runFrame[13] = (RUN_SIZE)(RUN_UINTPTR_TYPE)runConfig->runReturn;
+    runFrame[14] = (RUN_SIZE)(RUN_UINTPTR_TYPE)runConfig->runEntry;
+    runFrame[15] = RUN_CORTEX_M_XPSR_THUMB;
+    /*
+     * PendSV pre-decrements PSP before saving r4-r11 on the first switch.
+     * Point it at the hardware frame so the save lands in the reserved
+     * software-register slots immediately below that frame.
+     */
+    *runContextOut = (RUN_SIZE)(RUN_UINTPTR_TYPE)(runFrame + 8);
+    return RUN_STATUS_OK;
+}
+
+RUN_VOID run_arch_context_destroy(RUN_SIZE runContext)
+{
+    (RUN_VOID)runContext;
+}
+
+RUN_BOOL run_arch_context_requires_deferred_release(RUN_VOID)
+{
+    return RUN_FALSE;
+}
+
 RunCriticalState run_arch_enter_critical(RUN_VOID)
 {
     RUN_UINT_32 runState;
@@ -237,7 +284,7 @@ RUN_VOID run_arch_trigger_context_switch(RUN_VOID)
 RUN_VOID run_arch_start_scheduler(RUN_VOID)
 {
     /* PendSV performs the MSP-to-PSP transition and restores the first thread. */
-    RUN_UINTPTR_TYPE runStackPointer = (RUN_UINTPTR_TYPE)RunKernelCurrent->runStackPointer;
+    RUN_UINTPTR_TYPE runStackPointer = (RUN_UINTPTR_TYPE)RunKernelCurrent->runContext;
     __asm__ __volatile__("msr psp, %0\n isb" : : "r"(runStackPointer) : "memory");
     RUN_SCB_ICSR = RUN_SCB_ICSR_PENDSVSET;
     RUN_BARRIER();

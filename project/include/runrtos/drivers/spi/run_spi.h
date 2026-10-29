@@ -47,6 +47,18 @@ RunStatus run_spi_transfer(RunDevice *runDevice,
                            RUN_UINT_8 *runReceive,
                            RUN_SIZE runLength,
                            RUN_UINT_32 runTimeoutMs);
+/*
+ * Accepts one asynchronous full-duplex transfer. A second transfer submitted
+ * before the first completion returns RUN_STATUS_BUSY. The completion callback
+ * runs only in interrupt context; buffers and the callback argument must remain
+ * valid until then. It is invoked exactly once after successful acceptance.
+ */
+RunStatus run_spi_transfer_async(RunDevice *runDevice,
+                                 RUN_CONST RUN_UINT_8 *runTransmit,
+                                 RUN_UINT_8 *runReceive,
+                                 RUN_SIZE runLength,
+                                 RunSpiCompletion runCompletion,
+                                 RUN_VOID *runArgument);
 RunStatus run_spi_create_f103(RUN_UINT_32 runIndex,
                               RUN_CONST RUN_CHAR *runName,
                               RunDevice **runDeviceOut);

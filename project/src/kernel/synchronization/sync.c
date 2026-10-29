@@ -16,6 +16,8 @@
 #define RUN_SYNC_MAGIC_QUEUE 0x52554E51U
 #define RUN_SYNC_MAGIC_EVENT 0x52554E45U
 #define RUN_SYNC_MAGIC_TIMER 0x52554E54U
+#define RUN_SYNC_TIMER_MAX_FOREVER_MS \
+    (((RunTimeMs)0x7FFFFFFFU * 1000U) / RUN_CONFIG_TICK_HZ)
 
 /* Magic values catch stale handles during debug; they do not provide ownership. */
 RUN_STRUCT RunSemaphore
@@ -58,17 +60,30 @@ RUN_STRUCT RunEventGroup
 RUN_STRUCT RunTimer
 {
     RUN_UINT_32 runMagic;
+    RUN_UINT_32 runState;
     RunTimerCallback runCallback;
     RUN_VOID *runArgument;
     RUN_BOOL runPeriodic;
-    RUN_BOOL runRunning;
     RunTimeMs runPeriod;
     RunTick runDue;
+    RUN_UINT_64 runCallbackCount;
     RunTimer *runNext;
+    RunTimer *runAllNext;
 };
 
+typedef RUN_ENUM RunTimerState
+{
+    RUN_TIMER_STOPPED = 0,
+    RUN_TIMER_SCHEDULED,
+    RUN_TIMER_CALLBACK,
+    RUN_TIMER_DELETE_PENDING
+} RunTimerState;
+
 RUN_STATIC RunTimer *RunTimerFirst;
+RUN_STATIC RunTimer *RunTimerAll;
 RUN_STATIC RunThread *RunTimerThread;
+
+RUN_STATIC RUN_VOID run_timer_insert(RunTimer *runTimer);
 
 RUN_STATIC RUN_VOID run_sync_destroy_waiters(RunWaitList *runWaitList, RunStatus runStatus)
 {
@@ -95,50 +110,62 @@ RUN_STATIC RUN_VOID run_timer_service_entry(RUN_VOID *runArgument)
             runTimer = RunTimerFirst;
             RunTimerFirst = runTimer->runNext;
             runTimer->runNext = RUN_NULL;
+            runTimer->runState = (RUN_UINT_32)RUN_TIMER_CALLBACK;
+            runTimer->runCallbackCount++;
             /* Schedule from the current tick to avoid drift from callback latency. */
             if (runTimer->runPeriodic)
             {
                 runTimer->runDue = runNow +
                     (RunTick)((runTimer->runPeriod * RUN_CONFIG_TICK_HZ + 999U) / 1000U);
             }
-            else
-            {
-                runTimer->runRunning = RUN_FALSE;
-            }
         }
         run_arch_exit_critical(runState);
 
         if (runTimer != RUN_NULL)
         {
-            /*
-             * The callback is outside the critical section so it may use ordinary
-             * scheduler APIs. start() must not be called from this callback because
-             * the service loop reinserts a still-running periodic timer below.
-             */
+            /* User code runs unlocked; lifecycle changes are applied below. */
             runTimer->runCallback(runTimer, runTimer->runArgument);
-            if (runTimer->runPeriodic && runTimer->runRunning)
+            runState = run_arch_enter_critical();
+            if (runTimer->runState == (RUN_UINT_32)RUN_TIMER_DELETE_PENDING)
             {
-                RunTimer *runCurrent;
+                RunTimer *runCurrent = RunTimerAll;
                 RunTimer *runPrevious = RUN_NULL;
-                runState = run_arch_enter_critical();
-                runCurrent = RunTimerFirst;
-                while ((runCurrent != RUN_NULL) &&
-                       ((RUN_INT_32)(runCurrent->runDue - runTimer->runDue) <= 0))
+                while (runCurrent != RUN_NULL)
                 {
+                    if (runCurrent == runTimer)
+                    {
+                        if (runPrevious == RUN_NULL)
+                        {
+                            RunTimerAll = runCurrent->runAllNext;
+                        }
+                        else
+                        {
+                            runPrevious->runAllNext = runCurrent->runAllNext;
+                        }
+                        break;
+                    }
                     runPrevious = runCurrent;
-                    runCurrent = runCurrent->runNext;
+                    runCurrent = runCurrent->runAllNext;
                 }
-                runTimer->runNext = runCurrent;
-                if (runPrevious == RUN_NULL)
-                {
-                    RunTimerFirst = runTimer;
-                }
-                else
-                {
-                    runPrevious->runNext = runTimer;
-                }
-                run_arch_exit_critical(runState);
+                runTimer->runMagic = 0U;
+                (RUN_VOID)run_memory_release(RunKernel.runMemory, runTimer);
             }
+            else if (runTimer->runState == (RUN_UINT_32)RUN_TIMER_SCHEDULED)
+            {
+                /* start() during the callback installed a fresh deadline. */
+                run_timer_insert(runTimer);
+            }
+            else if (runTimer->runPeriodic &&
+                     (runTimer->runState == (RUN_UINT_32)RUN_TIMER_CALLBACK))
+            {
+                runTimer->runState = (RUN_UINT_32)RUN_TIMER_SCHEDULED;
+                run_timer_insert(runTimer);
+            }
+            else
+            {
+                runTimer->runState = (RUN_UINT_32)RUN_TIMER_STOPPED;
+            }
+            run_arch_exit_critical(runState);
         }
         else
         {
@@ -153,6 +180,10 @@ RunStatus run_timer_system_init(RUN_VOID)
     RunThreadConfig runConfig = {
         "timer", run_timer_service_entry, RUN_NULL, 768U, 1U, 1U
     };
+    if (RunTimerThread != RUN_NULL)
+    {
+        return RUN_STATUS_INVALID_STATE;
+    }
     return run_kernel_create_internal(&runConfig, &RunTimerThread);
 }
 
@@ -359,7 +390,7 @@ RUN_STATIC RUN_VOID run_thread_recompute_priority(RunThread *runThread)
         }
         runMutex = runMutex->runNext;
     }
-    runThread->runPriority = runPriority;
+    run_kernel_thread_set_priority(runThread, runPriority);
 }
 
 RunStatus run_mutex_create(RUN_CONST RunMutexConfig *runConfig, RunMutex **runMutexOut)
@@ -440,9 +471,11 @@ RunStatus run_mutex_lock(RunMutex *runMutex, RunTimeMs runTimeout)
         return RUN_STATUS_BUSY;
     }
     /* Raise immediately so the owner can release the mutex that blocks us. */
-    if (runCurrent->runPriority > runMutex->runOwner->runPriority)
+    if ((runCurrent != RUN_NULL) &&
+        (runCurrent->runPriority > runMutex->runOwner->runPriority))
     {
-        runMutex->runOwner->runPriority = runCurrent->runPriority;
+        run_kernel_thread_set_priority(runMutex->runOwner,
+                                       runCurrent->runPriority);
     }
     run_arch_exit_critical(runState);
     return run_kernel_block_current(runTimeout, &runMutex->runWaiters, RUN_NULL);
@@ -935,11 +968,35 @@ RUN_STATIC RUN_VOID run_timer_remove(RunTimer *runTimer)
                 runPrevious->runNext = runCurrent->runNext;
             }
             runTimer->runNext = RUN_NULL;
-            runTimer->runRunning = RUN_FALSE;
+            runTimer->runState = (RUN_UINT_32)RUN_TIMER_STOPPED;
             return;
         }
         runPrevious = runCurrent;
         runCurrent = runCurrent->runNext;
+    }
+}
+
+RUN_STATIC RUN_VOID run_timer_remove_all(RunTimer *runTimer)
+{
+    RunTimer *runCurrent = RunTimerAll;
+    RunTimer *runPrevious = RUN_NULL;
+    while (runCurrent != RUN_NULL)
+    {
+        if (runCurrent == runTimer)
+        {
+            if (runPrevious == RUN_NULL)
+            {
+                RunTimerAll = runCurrent->runAllNext;
+            }
+            else
+            {
+                runPrevious->runAllNext = runCurrent->runAllNext;
+            }
+            runTimer->runAllNext = RUN_NULL;
+            return;
+        }
+        runPrevious = runCurrent;
+        runCurrent = runCurrent->runAllNext;
     }
 }
 
@@ -957,7 +1014,7 @@ RunStatus run_timer_create(RunTimerCallback runCallback,
     {
         return RUN_STATUS_INVALID_ARGUMENT;
     }
-    runTicksValue = (runPeriod * RUN_CONFIG_TICK_HZ + 999U) / 1000U;
+    runTicksValue = ((RUN_UINT_64)runPeriod * RUN_CONFIG_TICK_HZ + 999U) / 1000U;
     if (runTicksValue == 0U)
     {
         runTicksValue = 1U;
@@ -978,10 +1035,24 @@ RunStatus run_timer_create(RunTimerCallback runCallback,
     {
         run_memory_set(runTimer, 0, sizeof(RunTimer));
         runTimer->runMagic = RUN_SYNC_MAGIC_TIMER;
+        runTimer->runState = (RUN_UINT_32)RUN_TIMER_STOPPED;
         runTimer->runCallback = runCallback;
         runTimer->runArgument = runArgument;
         runTimer->runPeriodic = runPeriodic;
         runTimer->runPeriod = runPeriod;
+        if (RunTimerAll == RUN_NULL)
+        {
+            RunTimerAll = runTimer;
+        }
+        else
+        {
+            RunTimer *runTail = RunTimerAll;
+            while (runTail->runAllNext != RUN_NULL)
+            {
+                runTail = runTail->runAllNext;
+            }
+            runTail->runAllNext = runTimer;
+        }
         *runTimerOut = runTimer;
     }
     run_arch_exit_critical(runState);
@@ -998,7 +1069,23 @@ RunStatus run_timer_delete(RunTimer *runTimer)
         return RUN_STATUS_INVALID_ARGUMENT;
     }
     runState = run_arch_enter_critical();
+    if (runTimer->runState == (RUN_UINT_32)RUN_TIMER_DELETE_PENDING)
+    {
+        run_arch_exit_critical(runState);
+        return RUN_STATUS_INVALID_STATE;
+    }
+    if (runTimer->runState == (RUN_UINT_32)RUN_TIMER_CALLBACK)
+    {
+        /*
+         * The service thread still holds a live callback reference. Mark the
+         * object unreachable and let the service free it after the callback.
+         */
+        runTimer->runState = (RUN_UINT_32)RUN_TIMER_DELETE_PENDING;
+        run_arch_exit_critical(runState);
+        return RUN_STATUS_OK;
+    }
     run_timer_remove(runTimer);
+    run_timer_remove_all(runTimer);
     runTimer->runMagic = 0U;
     runStatus = run_memory_release(RunKernel.runMemory, runTimer);
     run_arch_exit_critical(runState);
@@ -1015,7 +1102,7 @@ RunStatus run_timer_start(RunTimer *runTimer, RunTimeMs runDelay)
     {
         return RUN_STATUS_INVALID_ARGUMENT;
     }
-    runTicksValue = (runDelay * RUN_CONFIG_TICK_HZ + 999U) / 1000U;
+    runTicksValue = ((RUN_UINT_64)runDelay * RUN_CONFIG_TICK_HZ + 999U) / 1000U;
     if (runTicksValue == 0U)
     {
         runTicksValue = 1U;
@@ -1025,11 +1112,24 @@ RunStatus run_timer_start(RunTimer *runTimer, RunTimeMs runDelay)
         return RUN_STATUS_INVALID_ARGUMENT;
     }
     runState = run_arch_enter_critical();
-    /* Restarting removes any old queue node before installing a new deadline. */
-    run_timer_remove(runTimer);
+    if (runTimer->runState == (RUN_UINT_32)RUN_TIMER_DELETE_PENDING)
+    {
+        run_arch_exit_critical(runState);
+        return RUN_STATUS_INVALID_STATE;
+    }
     runTimer->runDue = (RunTick)RunKernel.runTicks + (RunTick)runTicksValue;
-    runTimer->runRunning = RUN_TRUE;
-    run_timer_insert(runTimer);
+    if (runTimer->runState == (RUN_UINT_32)RUN_TIMER_CALLBACK)
+    {
+        /* The callback already owns the pending dispatch; do not reinsert yet. */
+        runTimer->runState = (RUN_UINT_32)RUN_TIMER_SCHEDULED;
+    }
+    else
+    {
+        /* Restarting removes any old queue node before installing a new deadline. */
+        run_timer_remove(runTimer);
+        runTimer->runState = (RUN_UINT_32)RUN_TIMER_SCHEDULED;
+        run_timer_insert(runTimer);
+    }
     run_arch_exit_critical(runState);
     return RUN_STATUS_OK;
 }
@@ -1044,8 +1144,63 @@ RunStatus run_timer_stop(RunTimer *runTimer)
         return RUN_STATUS_INVALID_ARGUMENT;
     }
     runState = run_arch_enter_critical();
-    run_timer_remove(runTimer);
+    if (runTimer->runState == (RUN_UINT_32)RUN_TIMER_DELETE_PENDING)
+    {
+        run_arch_exit_critical(runState);
+        return RUN_STATUS_INVALID_STATE;
+    }
+    if (runTimer->runState == (RUN_UINT_32)RUN_TIMER_CALLBACK)
+    {
+        /* Prevent the service-loop periodic reinsertion after the callback. */
+        runTimer->runState = (RUN_UINT_32)RUN_TIMER_STOPPED;
+    }
+    else
+    {
+        run_timer_remove(runTimer);
+    }
     run_arch_exit_critical(runState);
     return RUN_STATUS_OK;
+}
+
+RunStatus run_timer_get_info(RUN_SIZE runIndex, RunTimerInfo *runInfoOut)
+{
+    RunTimer *runTimer;
+    RunCriticalState runState;
+    RunStatus runStatus = RUN_STATUS_INVALID_ARGUMENT;
+    if ((runInfoOut == RUN_NULL) ||
+        (run_kernel_api_enter(RUN_FALSE) != RUN_STATUS_OK))
+    {
+        return RUN_STATUS_INVALID_ARGUMENT;
+    }
+    runState = run_arch_enter_critical();
+    runTimer = RunTimerAll;
+    while ((runTimer != RUN_NULL) && (runIndex > 0U))
+    {
+        runTimer = runTimer->runAllNext;
+        runIndex--;
+    }
+    if (runTimer != RUN_NULL)
+    {
+        RUN_UINT_32 runElapsedTicks;
+        runInfoOut->runTimer = runTimer;
+        runInfoOut->runState = runTimer->runState;
+        runInfoOut->runPeriodic = runTimer->runPeriodic;
+        runInfoOut->runRunning =
+            (runTimer->runState == (RUN_UINT_32)RUN_TIMER_SCHEDULED) ?
+            RUN_TRUE : RUN_FALSE;
+        runInfoOut->runPeriod = runTimer->runPeriod;
+        runInfoOut->runCallbackCount = runTimer->runCallbackCount;
+        runElapsedTicks = (RUN_UINT_32)RunKernel.runTicks -
+            (RUN_UINT_32)runTimer->runDue;
+        runInfoOut->runRemaining =
+            (runInfoOut->runRunning &&
+             ((RUN_INT_32)runElapsedTicks < 0)) ?
+            (RunTimeMs)(((RUN_UINT_32)(0U - runElapsedTicks) * 1000U +
+                         RUN_CONFIG_TICK_HZ - 1U) / RUN_CONFIG_TICK_HZ) :
+            0U;
+        runStatus = RUN_STATUS_OK;
+    }
+    run_arch_exit_critical(runState);
+    return runStatus;
 }
 

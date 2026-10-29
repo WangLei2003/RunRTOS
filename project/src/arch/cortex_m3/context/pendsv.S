@@ -18,7 +18,7 @@ PendSV_Handler:
     @ Decrement first so the saved pointer denotes the complete software frame.
     stmdb r0!, {r4-r11}
 
-    @ Offset zero in RunThread is the saved PSP; this is a kernel/port ABI.
+    @ Offset zero in RunThread is the architecture context word (PSP here).
     ldr r1, =RunKernelCurrent
     ldr r1, [r1]
     str r0, [r1, #0]

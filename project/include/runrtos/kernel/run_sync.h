@@ -21,6 +21,18 @@ typedef RUN_STRUCT RunTimer RunTimer;
 
 typedef RUN_VOID (*RunTimerCallback)(RunTimer *runTimer, RUN_VOID *runArgument);
 
+/* Read-only timer snapshot suitable for diagnostics outside the kernel. */
+typedef RUN_STRUCT RunTimerInfo
+{
+    RunTimer *runTimer;
+    RUN_UINT_32 runState;
+    RUN_BOOL runPeriodic;
+    RUN_BOOL runRunning;
+    RunTimeMs runPeriod;
+    RunTimeMs runRemaining;
+    RUN_UINT_64 runCallbackCount;
+} RunTimerInfo;
+
 typedef RUN_STRUCT RunMutexConfig
 {
     RUN_BOOL runRecursive;
@@ -95,11 +107,11 @@ RunStatus run_event_group_wait(RunEventGroup *runEventGroup,
                                RunTimeMs runTimeout);
 
 /*
- * Creates a freed software timer. run_timer_start supplies the first delay; a
+ * Creates a stopped software timer. run_timer_start supplies the first delay; a
  * periodic timer then uses its configured runPeriod for later expirations.
- * Callbacks run at timer-service priority and must not block, delete themselves,
- * or restart themselves. The application must not delete a timer concurrently
- * with its callback.
+ * Callbacks run in the timer service thread and must not block. start, stop, and
+ * delete are legal from the callback; deletion is deferred until the callback
+ * returns, and deletion from another thread during the callback is also safe.
  */
 RunStatus run_timer_create(RunTimerCallback runCallback,
                            RUN_VOID *runArgument,
@@ -109,6 +121,13 @@ RunStatus run_timer_create(RunTimerCallback runCallback,
 RunStatus run_timer_delete(RunTimer *runTimer);
 RunStatus run_timer_start(RunTimer *runTimer, RunTimeMs runDelay);
 RunStatus run_timer_stop(RunTimer *runTimer);
+
+/*
+ * Enumerates all live timers in creation order and returns a point-in-time
+ * snapshot. A stale index returns INVALID_ARGUMENT. Repeated calls are not a
+ * transactional iterator because timers may be created or deleted concurrently.
+ */
+RunStatus run_timer_get_info(RUN_SIZE runIndex, RunTimerInfo *runInfoOut);
 
 #endif
 

@@ -26,3 +26,24 @@ RunStatus run_spi_transfer(RunDevice *runDevice,
                                       runLength, runTimeoutMs);
 }
 
+RunStatus run_spi_transfer_async(RunDevice *runDevice,
+                                 RUN_CONST RUN_UINT_8 *runTransmit,
+                                 RUN_UINT_8 *runReceive,
+                                 RUN_SIZE runLength,
+                                 RunSpiCompletion runCompletion,
+                                 RUN_VOID *runArgument)
+{
+    RUN_CONST RunSpiOperations *runOperations = run_spi_ops(runDevice);
+    if ((runOperations == RUN_NULL) ||
+        (runOperations->runTransferAsync == RUN_NULL) ||
+        ((runTransmit == RUN_NULL) && (runReceive == RUN_NULL) &&
+         (runLength != 0U)) ||
+        (runCompletion == RUN_NULL))
+    {
+        return RUN_STATUS_INVALID_ARGUMENT;
+    }
+    return runOperations->runTransferAsync(runDevice, runTransmit, runReceive,
+                                           runLength, runCompletion,
+                                           runArgument);
+}
+

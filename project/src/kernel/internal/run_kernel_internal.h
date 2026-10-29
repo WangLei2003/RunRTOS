@@ -5,8 +5,8 @@
  * Layer: kernel (private)
  * Purpose: Share invariants and wait-list operations inside the kernel/port.
  * Dependencies: public core, arch, and kernel contracts.
- * Constraint: Not installed publicly. RunThread offset zero is an assembler ABI
- *             contract and must remain the saved process stack pointer.
+ * Constraint: Not installed publicly. RunThread offset zero is the architecture
+ *             context word and must remain first for the Cortex assembly ABI.
  */
 #ifndef RUN_KERNEL_INTERNAL_H_
 #define RUN_KERNEL_INTERNAL_H_
@@ -36,8 +36,8 @@ typedef RUN_STRUCT RunMutex RunMutex;
 
 RUN_STRUCT RunThread
 {
-    /* PendSV assembly stores the process stack pointer at offset zero. */
-    RUN_VOLATILE RUN_SIZE runStackPointer;
+    /* Cortex stores PSP here; the test port may store an opaque context handle. */
+    RUN_VOLATILE RUN_SIZE runContext;
     RunThread *runReadyNext;
     RunThread *runWaitNext;
     RunThread *runWaitPrevious;
@@ -68,6 +68,7 @@ typedef RUN_STRUCT RunKernelState
     RunThread *runCurrent;
     RunThread *runIdle;
     RunThread *runThreads;
+    RunThread *runReap;
     RunThread *runReady[RUN_CONFIG_PRIORITY_COUNT];
     RunThread *runReadyLast[RUN_CONFIG_PRIORITY_COUNT];
     RUN_UINT_32 runReadyBitmap;
@@ -89,6 +90,8 @@ RunStatus run_kernel_block_current(RunTimeMs runTimeout,
                                    RunWaitList *runWaitList,
                                    RUN_UINT_32 *runWakeStatusOut);
 RUN_VOID run_kernel_ready_thread(RunThread *runThread, RunStatus runWakeStatus);
+RUN_VOID run_kernel_thread_set_priority(RunThread *runThread,
+                                        RUN_UINT_8 runPriority);
 RUN_VOID run_kernel_wait_list_append(RunWaitList *runWaitList, RunThread *runThread);
 RUN_VOID run_kernel_wait_list_remove(RunThread *runThread);
 RunThread *run_kernel_wait_list_pop(RunWaitList *runWaitList);
@@ -97,6 +100,7 @@ RUN_BOOL run_kernel_validate_thread(RunThread *runThread);
 RUN_VOID run_kernel_idle_entry(RUN_VOID *runArgument);
 RunStatus run_kernel_create_internal(RUN_CONST RunThreadConfig *runConfig,
                                      RunThread **runThreadOut);
+RUN_VOID run_kernel_switch_prepare(RUN_VOID);
 
 #endif
 
