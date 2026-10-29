@@ -4,6 +4,9 @@ RunRTOS 是一个面向单片机的轻量、可裁剪、模块化实时操作系
 STM32F103RBT6 为首发平台，目标是在保持内核确定性、驱动框架和诊断能力的同时，
 通过清晰的架构与 SoC 移植边界扩展到更多 MCU。
 
+- GitHub 仓库：https://github.com/WangLei2003/RunRTOS
+- 0.1 发布：https://github.com/WangLei2003/RunRTOS/releases/tag/v0.1.0
+
 ## 当前状态
 
 项目已完成 `0.1.0` 本地软件与 STM32F103RBT6 板端验收。当前基线包含：
