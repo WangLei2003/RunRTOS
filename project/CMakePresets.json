@@ -1,0 +1,74 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 25,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "host-tests",
+      "displayName": "Host unit tests",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/host-tests",
+      "cacheVariables": {
+        "RUNRTOS_HOST_TESTS": "ON",
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "f103rb-base",
+      "hidden": true,
+      "generator": "Ninja",
+      "toolchainFile": "${sourceDir}/cmake/arm-none-eabi-toolchain.cmake",
+      "cacheVariables": {
+        "RUNRTOS_BOARD": "f103rb",
+        "RUNRTOS_TARGET_MCU": "stm32f103rb"
+      }
+    },
+    {
+      "name": "f103rb-debug",
+      "displayName": "STM32F103RBT6 Debug",
+      "inherits": "f103rb-base",
+      "binaryDir": "${sourceDir}/build/f103rb-debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "RUNRTOS_MINIMAL": "OFF"
+      }
+    },
+    {
+      "name": "f103rb-release",
+      "displayName": "STM32F103RBT6 Release",
+      "inherits": "f103rb-base",
+      "binaryDir": "${sourceDir}/build/f103rb-release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "RUNRTOS_MINIMAL": "OFF"
+      }
+    },
+    {
+      "name": "f103rb-minimal",
+      "displayName": "STM32F103RBT6 Minimal",
+      "inherits": "f103rb-base",
+      "binaryDir": "${sourceDir}/build/f103rb-minimal",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "MinSizeRel",
+        "RUNRTOS_MINIMAL": "ON"
+      }
+    }
+  ],
+  "buildPresets": [
+    { "name": "host-tests", "configurePreset": "host-tests" },
+    { "name": "f103rb-debug", "configurePreset": "f103rb-debug" },
+    { "name": "f103rb-release", "configurePreset": "f103rb-release" },
+    { "name": "f103rb-minimal", "configurePreset": "f103rb-minimal" }
+  ],
+  "testPresets": [
+    {
+      "name": "host-tests",
+      "configurePreset": "host-tests",
+      "output": { "outputOnFailure": true }
+    }
+  ]
+}
+

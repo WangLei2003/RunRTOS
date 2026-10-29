@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: Apache-2.0
+# RunRTOS - cache directory policy
+#
+# Layer: repository
+# Purpose: Exclude tools, intermediate files, references, and temporary data.
+# Dependencies: none.
+# Constraint: This control file is the only intentionally tracked cache entry.
+*
+!.gitignore
+

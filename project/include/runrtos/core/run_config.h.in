@@ -1,0 +1,29 @@
+/*
+ * SPDX-License-Identifier: Apache-2.0
+ * RunRTOS - generated build configuration template
+ *
+ * Layer: core
+ * Purpose: Turn CMake options into one compile-time feature configuration.
+ * Dependencies: none.
+ * Constraint: Edit this template, never the generated run_config.h.
+ */
+#ifndef RUN_CONFIG_H_
+#define RUN_CONFIG_H_
+
+/* Disable optional features to reduce code size; core contracts remain unchanged. */
+#cmakedefine01 RUN_CONFIG_MINIMAL
+/* Reserved for the diagnostic shell; no shell implementation is linked yet. */
+#cmakedefine01 RUN_CONFIG_SHELL
+/* Compile internal invariant checks and expose the configurable assert hook. */
+#cmakedefine01 RUN_CONFIG_ASSERT_ENABLED
+
+/* Scheduler tick frequency and highest-priority application level plus idle. */
+#define RUN_CONFIG_TICK_HZ @RUNRTOS_TICK_HZ@
+#define RUN_CONFIG_PRIORITY_COUNT @RUNRTOS_PRIORITY_COUNT@
+/* Board-owned arena and MSP reserve calculated by the firmware linker. */
+#define RUN_CONFIG_MEMORY_ARENA_BYTES @RUNRTOS_MEMORY_ARENA_BYTES@
+#define RUN_CONFIG_MAIN_STACK_BYTES @RUNRTOS_MAIN_STACK_BYTES@
+#define RUN_CONFIG_VERSION "@PROJECT_VERSION@"
+
+#endif
+

@@ -1,0 +1,9 @@
+# SPDX-License-Identifier: Apache-2.0
+# RunRTOS - project-local generated output exclusions
+#
+# Layer: repository
+# Purpose: Keep preset-generated files outside version control.
+# Dependencies: none.
+# Constraint: Build output must remain below project/build.
+build/
+

@@ -1,0 +1,100 @@
+/*
+ * SPDX-License-Identifier: Apache-2.0
+ * RunRTOS - STM32F103RB firmware memory layout
+ *
+ * Layer: arch/cortex_m3/linker
+ * Purpose: Place vectors, initialized data, BSS, allocator arena, and main stack.
+ * Dependencies: CMake-substituted stack size.
+ * Constraint: _estack must equal the top of SRAM; the final assertion rejects
+ *             overlap between static data and the reserved MSP region.
+ */
+ENTRY(Reset_Handler)
+
+MEMORY
+{
+    FLASH (rx)  : ORIGIN = 0x08000000, LENGTH = 128K
+    RAM   (xrw) : ORIGIN = 0x20000000, LENGTH = 20K
+}
+
+_estack = ORIGIN(RAM) + LENGTH(RAM);
+_run_main_stack_bytes = @RUNRTOS_MAIN_STACK_BYTES@;
+_stack_bottom = _estack - _run_main_stack_bytes;
+
+SECTIONS
+{
+    .isr_vector :
+    {
+        . = ALIGN(4);
+        KEEP(*(.isr_vector))
+        . = ALIGN(4);
+    } > FLASH
+
+    .text :
+    {
+        . = ALIGN(4);
+        *(.text)
+        *(.text*)
+        *(.glue_7)
+        *(.glue_7t)
+        . = ALIGN(4);
+    } > FLASH
+
+    .rodata :
+    {
+        . = ALIGN(4);
+        *(.rodata)
+        *(.rodata*)
+        . = ALIGN(4);
+    } > FLASH
+
+    .ARM.extab :
+    {
+        *(.ARM.extab* .gnu.linkonce.armextab.*)
+    } > FLASH
+
+    .ARM :
+    {
+        __exidx_start = .;
+        *(.ARM.exidx*)
+        __exidx_end = .;
+    } > FLASH
+
+    _sidata = LOADADDR(.data);
+    .data :
+    {
+        . = ALIGN(8);
+        _sdata = .;
+        *(.data)
+        *(.data*)
+        . = ALIGN(8);
+        _edata = .;
+    } > RAM AT> FLASH
+
+    .bss (NOLOAD) :
+    {
+        . = ALIGN(8);
+        _sbss = .;
+        *(.bss)
+        *(.bss*)
+        *(COMMON)
+        . = ALIGN(8);
+        _ebss = .;
+    } > RAM
+
+    .run_memory (NOLOAD) :
+    {
+        . = ALIGN(8);
+        KEEP(*(.run_memory))
+        . = ALIGN(8);
+    } > RAM
+
+    .stack_reserve (NOLOAD) :
+    {
+        . = ALIGN(8);
+        . = . + _run_main_stack_bytes;
+        . = ALIGN(8);
+    } > RAM
+
+    ASSERT(_stack_bottom >= _ebss, "RunRTOS RAM overflow")
+}
+
